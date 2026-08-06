@@ -1,5 +1,7 @@
 # PowerCumul — Mac mini 用电累计监控
 
+[中文](./README.md) | **English** → [README.en.md](./README.en.md)
+
 一个轻量的 macOS 菜单栏 App，用于监控 Mac mini 的累计用电量。状态栏点开即看面板：实时功率、今日累计 kWh、24 小时功率曲线、估算电费。**纯软件方案，不依赖任何硬件。**
 
 > 适用于 Apple Silicon (M1/M2/M3/M4) 的 Mac mini / MacBook / iMac，macOS 13+。
@@ -126,6 +128,20 @@ open build/PowerCumul.app
 
 ---
 
+## 🔄 发布流程
+
+发布通过 GitHub Actions 自动化。发新版本只需：
+
+```bash
+git tag v0.02
+git push origin v0.02
+# GitHub Actions 自动构建、打包 DMG、创建 Release
+```
+
+下载地址：[GitHub Releases](https://github.com/StruggleYang/PowerCumul/releases)
+
+---
+
 ## 📁 项目结构
 
 ```
@@ -133,9 +149,10 @@ PowerCumul/
 ├── Sources/
 │   ├── main.swift            # AppDelegate 入口：状态栏 / 弹出面板 / 采样定时器
 │   ├── PowerSampler.swift    # 调用 powermetrics + 容错解析（兼容多 macOS 版本）
-│   ├── EnergyStore.swift     # 累计能量计算 + JSON 持久化（小时/天聚合）
-│   ├── ChartView.swift       # Core Graphics 手绘折线图（24h/7d/30d）
-│   ├── PanelController.swift # NSPopover 面板布局与刷新
+│   ├── EnergyStore.swift     # 累计能量计算 + 双层持久化（samples.jsonl + state.json）
+│   ├── ChartView.swift       # Core Graphics 手绘折线图（24H/7D/30D）
+│   ├── PanelController.swift # NSPopover 主面板布局与刷新
+│   ├── SettingsWindowController.swift # 独立设置窗口（frame-based 布局）
 │   ├── AlertManager.swift    # 功率/预算告警（系统通知 + 防抖）
 │   ├── CSVExporter.swift     # 数据导出 CSV（天级+小时级）
 │   ├── PrivilegeManager.swift# 应用内一键授权（原生密码框写 sudoers）
@@ -149,16 +166,19 @@ PowerCumul/
 │   ├── generate-icon.sh      # 脚本化生成 squircle 闪电图标
 │   ├── install-sudoers.sh    # sudo 免密配置（终端备选方式）
 │   └── package-dmg.sh        # 打包 DMG 用于分发
+├── .github/workflows/
+│   └── release.yml           # GitHub Actions：打 tag 自动构建并发布 Release
 ├── build.sh                  # 一键构建（编译 + 组装 .app + 图标 + 签名）
-└── README.md
+├── README.md                 # 中文文档（本文件）
+└── README.en.md              # 英文文档
 ```
 
 ---
 
 ## ❓ FAQ
 
-**Q: 为什么状态栏/面板显示"未检测到 powermetrics 权限"？**
-A: 还没配置 sudo 免密。运行 `sudo ./scripts/install-sudoers.sh` 一次即可。
+**Q: 为什么状态栏/面板显示"需要 powermetrics 权限"？**
+A: 还没配置 sudo 免密。点开面板，点橙色卡片里的 **「一键配置权限」** 按钮，输入一次开机密码即可（应用内完成，无需终端）。也可用终端：`sudo ./scripts/install-sudoers.sh`。
 
 **Q: 升级 macOS 后会不会失效？**
 A: 解析器采用容错策略：优先匹配新版 `Combined Power (CPU + GPU + ANE)`，回退到旧版 `Package Power`，最后回退到分量求和（CPU+GPU+ANE+DRAM）。能跨 macOS 版本稳定工作。
