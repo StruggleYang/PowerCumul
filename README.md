@@ -1,190 +1,190 @@
-# PowerCumul — Mac mini 用电累计监控
+# PowerCumul — Mac mini Power Monitoring
 
-[中文](./README.md) | **English** → [README.en.md](./README.en.md)
+**English** | [中文](./README.zh.md)
 
-一个轻量的 macOS 菜单栏 App，用于监控 Mac mini 的累计用电量。状态栏点开即看面板：实时功率、今日累计 kWh、24 小时功率曲线、估算电费。**纯软件方案，不依赖任何硬件。**
+A lightweight macOS menu bar app to track cumulative power consumption of your Mac mini. Click the status bar icon to see real-time power, today's energy in kWh, power trend charts, and estimated cost. **Pure software solution — no hardware required.**
 
-> 适用于 Apple Silicon (M1/M2/M3/M4) 的 Mac mini / MacBook / iMac，macOS 13+。
-
----
-
-## ✨ 功能
-
-- **状态栏实时显示**：5 种模式自由切换 —— 功率 / 费用 / 电量 / 功率+费用组合 / 仅图标
-- **弹出面板**：点开即见实时功率 + CPU/GPU/ANE 分量、今日累计 kWh、估算电费
-- **告警通知**：功率超过阈值 / 今日电费超过预算时弹系统通知（防抖，不刷屏）
-- **多时段图表**：24 小时 / 7 天 / 30 天功率趋势切换，Core Graphics 手绘
-- **数据导出**：一键导出 CSV（天级汇总 + 小时级明细），Excel/Numbers 直接打开
-- **多货币电价**：12 种常用货币预设（¥ $ € £ ¥₩ ₽ ₹ NT$ HK$ A$ C$）+ 自定义电价
-- **完整中英双语**：App 内一键切换语言（跟随系统/中文/English），重启即生效
-- **累计用电**：自首次运行起的总用电量（Wh/kWh），断电重启后自动续算
-- **应用内授权**：一键配置 powermetrics 权限（系统原生密码框），无需碰终端
-- **可配置**：采样间隔、货币、电价、显示模式、告警阈值/预算、开机自启
+> Works on Apple Silicon (M1/M2/M3/M4) Mac mini / MacBook / iMac, macOS 13+.
 
 ---
 
-## 💾 数据存储
+## ✨ Features
 
-全部本地存储，**不上云、不联网上报**。采用双层结构兼顾性能与断电安全：
+- **Status bar real-time display**: 5 switchable modes — Power / Cost / Energy / Power+Cost combo / Icon only
+- **Popover panel**: real-time power + CPU/GPU/ANE breakdown, today's kWh, estimated cost
+- **Alert notifications**: power exceeds threshold / daily cost exceeds budget (debounced, no spam)
+- **Multi-range charts**: 24H / 7D / 30D power trend, hand-drawn with Core Graphics
+- **Data export**: one-click CSV export (daily summary + hourly detail), opens in Excel/Numbers
+- **Multi-currency pricing**: 12 common currency presets (¥ $ € £ ₩ ₽ ₹ NT$ HK$ A$ C$) + custom price
+- **Full bilingual (CN/EN)**: switch language in-app (Follow System / 中文 / English), restarts to apply
+- **Cumulative energy**: total consumption (Wh/kWh) since first run, auto-resumes after reboot
+- **In-app authorization**: one-click `powermetrics` permission setup (native password prompt), no terminal needed
+- **Configurable**: sample interval, currency, price, display mode, alert thresholds/budget, launch at login
 
-| 内容 | 位置 | 说明 |
+---
+
+## 💾 Data Storage
+
+Fully local, **no cloud, no network reporting**. Two-layer structure balancing performance and crash safety:
+
+| Content | Location | Description |
 |---|---|---|
-| 原始采样流 | `~/Library/Application Support/PowerCumul/samples.jsonl` | JSONL **只追加**，每次采样写一行（~80B）。断电最多丢最后一行，坏一行不影响其他；想重算聚合随时可从原始流重建 |
-| 聚合状态 | `~/Library/Application Support/PowerCumul/state.json` | 小文件原子重写，存累计/今日/小时桶/天桶。写入量小、恒定 |
-| 偏好设置 | UserDefaults（`~/Library/Preferences/com.powercumul.app.plist`） | 系统托管 |
+| Raw sample stream | `~/Library/Application Support/PowerCumul/samples.jsonl` | JSONL **append-only**, one line per sample (~80B). Power loss loses at most the last line; one corrupted line doesn't affect others; aggregation can always be rebuilt from raw stream |
+| Aggregated state | `~/Library/Application Support/PowerCumul/state.json` | Small file, atomic rewrite. Stores cumulative/today/hourly buckets/daily buckets. Small, constant write cost |
+| Preferences | UserDefaults (`~/Library/Preferences/com.powercumul.app.plist`) | System-managed |
 
-> 为什么分两层：原始流只追加（写入恒定、不随历史增长、断电安全）；聚合状态文件小、全量重写代价低。避免每次采样都重写整个大文件。
-
----
-
-## 🌐 国际化
-
-**支持 App 内一键切换语言**（面板「设置 → 语言」），无需改 macOS 系统语言：
-
-- **跟随系统** / **中文** / **English** 三选一
-- 切换后自动重启 App，新语言立即全程生效（文本 + 数字格式）
-- 默认跟随 macOS 系统语言
-
-数字、日期、货币符号按所选语言的地区格式化（如 `1,50 W` vs `1.5 W`，`¥0.36` vs `$0.05`）。
-
-> 技术说明：macOS 的本地化在 App 启动时缓存，运行中改语言不会自动刷新。因此切换语言采用「保存偏好 → 重启 App」的方式（约 1 秒），保证文本与数字格式立即完全一致，避免半中半英的中间态。
-
-如需新增语言，复制 `Sources/Resources/en.lproj/` 为 `<语言>.lproj` 并翻译其中的 `Localizable.strings`，再在 `AppLanguage` 枚举加一项即可。
+> Why two layers: the raw stream is append-only (constant writes, doesn't grow with history, crash-safe); the aggregation file is small, full-rewrite cost is low. Avoids rewriting a large file on every sample.
 
 ---
 
-## ⚙️ 工作原理
+## 🌐 Internationalization
 
-本工具通过 macOS 自带的 `powermetrics` 命令（需 root 权限）采样 CPU / GPU / ANE / SoC 的瞬时功率（毫瓦），按时间积分得到累计能量：
+**Switch language in-app** (panel → Settings → Language), no need to change macOS system language:
+
+- **Follow System** / **中文** / **English** — pick one
+- Switching restarts the app, new language applies fully immediately (text + number formatting)
+- Defaults to macOS system language
+
+Numbers, dates, and currency symbols are formatted per the selected language's locale (e.g. `1.5 W` vs `1,5 W`, `¥0.36` vs `$0.05`).
+
+> Technical note: macOS caches localization at app launch; changing language at runtime won't auto-refresh. So language switching uses "save preference → restart app" (~1 sec) to ensure text and number formats are immediately and fully consistent, avoiding a half-translated intermediate state.
+
+To add a language: copy `Sources/Resources/en.lproj/` to `<lang>.lproj`, translate `Localizable.strings`, and add a case to the `AppLanguage` enum.
+
+---
+
+## ⚙️ How It Works
+
+This tool samples instantaneous power (milliwatts) of CPU / GPU / ANE / SoC via macOS's built-in `powermetrics` command (requires root), integrating over time to get cumulative energy:
 
 ```
-E(Wh) += P(mW) × Δt(秒) / 3600 / 1000
+E(Wh) += P(mW) × Δt(seconds) / 3600 / 1000
 ```
 
-数据采用双层持久化：原始采样追加到 `samples.jsonl`，聚合状态写入 `state.json`（详见上文「数据存储」）。
+Data uses two-layer persistence: raw samples append to `samples.jsonl`, aggregated state writes to `state.json` (see "Data Storage" above).
 
-### 关于精度的说明（重要）
+### A Note on Accuracy (Important)
 
-macOS 软件层**无法获取整机墙功耗（wall power）**——Mac mini 没有电池或 UPS，系统不暴露整机输入功率。因此本工具统计的是 **SoC 累计功耗近似值**，会比真实用电量**偏低**约 10%–30%（未计入内存、SSD、USB 外设、电源转换损耗）。
+macOS software layer **cannot obtain wall power (total machine input power)** — Mac mini has no battery or UPS, and the system doesn't expose total input power. So this tool reports an **approximate SoC cumulative power consumption**, which runs **10%–30% lower** than actual usage (excludes memory, SSD, USB peripherals, power conversion losses).
 
-- 想看**趋势、相对用电量、负载时段**：本工具完全够用。
-- 想要**精确到度数的真实用电量**（比如算电费）：请用智能插座（硬件方案），这是 macOS 软件方案的根本限制。
+- For **trends, relative consumption, load patterns**: this tool is sufficient.
+- For **exact real-world usage** (e.g. billing): use a smart plug (hardware solution) — this is a fundamental limitation of any macOS software approach.
 
-面板上会明确标注"SoC 估算值"，避免误读。
+The panel clearly labels this as "SoC estimate" to avoid misreading.
 
 ---
 
-## 🚀 安装与使用
+## 🚀 Installation & Usage
 
-### 1. 构建
+### 1. Build
 
 ```bash
 ./build.sh
 ```
 
-需要 Xcode Command Line Tools（`xcode-select --install`），无需完整 Xcode。产出 `build/PowerCumul.app`。
+Requires Xcode Command Line Tools (`xcode-select --install`), no full Xcode needed. Produces `build/PowerCumul.app`.
 
-### 2. 运行
+### 2. Run
 
 ```bash
 open build/PowerCumul.app
 ```
 
-菜单栏出现 ⚡ 图标。首次运行时，点开面板会看到橙色提示「需要 powermetrics 权限」，点击 **「一键配置权限」** 按钮 → 系统弹出原生密码框 → 输入一次开机密码 → 完成。之后永久免密，无需再碰终端。
+A ⚡ icon appears in the menu bar. On first run, opening the panel shows an orange prompt "powermetrics permission required" — click **"Grant Permission"** → a native password dialog appears → enter your login password once → done. Permanent passwordless access after that, no terminal needed.
 
-> 权限授权是应用内完成的：通过系统标准授权机制（`do shell script ... with administrator privileges`）把**仅 powermetrics 一个程序**的免密规则写入 `/etc/sudoers.d/powercumul`，不放开其他 sudo 权限。
+> Authorization happens in-app: via the standard system authorization mechanism (`do shell script ... with administrator privileges`), writing a passwordless rule for **only the `powermetrics` program** to `/etc/sudoers.d/powercumul` — no other sudo permissions are opened up.
 >
-> 不喜欢 GUI 方式？也可用终端（效果相同）：`sudo ./scripts/install-sudoers.sh`
+> Prefer the terminal? Same effect: `sudo ./scripts/install-sudoers.sh`
 
-### 3. 开机自启
+### 3. Launch at Login
 
-面板「设置」区勾选「开机自启」，即用 `SMAppService`（macOS 13+ 现代登录项）注册。
+Check "Launch at Login" in the Settings window, registered via `SMAppService` (modern login item API, macOS 13+).
 
 ---
 
-## 📦 分发
+## 📦 Distribution
 
-### 打包 DMG
+### Package DMG
 
 ```bash
 ./scripts/package-dmg.sh
 ```
 
-产出 `build/PowerCumul-1.0.dmg`（含 App + Applications 软链，拖拽即装）。把这个 DMG 发给朋友、上传到 GitHub Release 即可。
+Produces `build/PowerCumul-1.0.dmg` (App + Applications symlink, drag-to-install). Share the DMG or upload to GitHub Releases.
 
-### 接收方首次打开（重要）
+### First Launch for Recipients (Important)
 
-本应用是 **ad-hoc 签名**（无 Apple Developer 账号 $99/年），macOS Gatekeeper 会拦截。接收方首次打开需手动信任**一次**：
+This app is **ad-hoc signed** (no Apple Developer account at $99/yr), so macOS Gatekeeper will block it. Recipients must manually trust it **once** on first launch:
 
-1. 在访达里**右键点击** PowerCumul.app → **打开**
-2. 弹出警告点 **「仍要打开」**
-3. 之后正常使用，不再提示
+1. In Finder, **right-click** PowerCumul.app → **Open**
+2. In the warning dialog, click **"Open Anyway"**
+3. Works normally afterward, no more prompts
 
-（直接双击会被拦且无「仍要打开」选项——必须用右键打开这条路。首次运行后权限授权流程同上。）
+(Double-clicking directly gets blocked with no "Open Anyway" option — you must use right-click → Open. After first run, the permission authorization flow is the same as above.)
 
-### 想做正式签名公证分发？
+### Want proper signed & notarized distribution?
 
-若有 Apple Developer 账号，可加上 Developer ID 签名 + notarize，做成双击即跑。需要时再补自动化脚本。
-
----
-
-## 🔄 发布流程
-
-发布通过 GitHub Actions 自动化。发新版本只需：
-
-```bash
-git tag v0.02
-git push origin v0.02
-# GitHub Actions 自动构建、打包 DMG、创建 Release
-```
-
-下载地址：[GitHub Releases](https://github.com/StruggleYang/PowerCumul/releases)
+With an Apple Developer account, you can add Developer ID signing + notarization for double-click-to-run. Automation scripts can be added when needed.
 
 ---
 
-## 📁 项目结构
+## 📁 Project Structure
 
 ```
 PowerCumul/
 ├── Sources/
-│   ├── main.swift            # AppDelegate 入口：状态栏 / 弹出面板 / 采样定时器
-│   ├── PowerSampler.swift    # 调用 powermetrics + 容错解析（兼容多 macOS 版本）
-│   ├── EnergyStore.swift     # 累计能量计算 + 双层持久化（samples.jsonl + state.json）
-│   ├── ChartView.swift       # Core Graphics 手绘折线图（24H/7D/30D）
-│   ├── PanelController.swift # NSPopover 主面板布局与刷新
-│   ├── SettingsWindowController.swift # 独立设置窗口（frame-based 布局）
-│   ├── AlertManager.swift    # 功率/预算告警（系统通知 + 防抖）
-│   ├── CSVExporter.swift     # 数据导出 CSV（天级+小时级）
-│   ├── PrivilegeManager.swift# 应用内一键授权（原生密码框写 sudoers）
-│   ├── Preferences.swift     # 用户偏好（间隔/电价/货币/模式/告警/区间）
-│   ├── Currency.swift        # 货币/状态栏模式/语言/图表区间枚举
-│   ├── L10n.swift            # 本地化封装 + locale 数字格式化
-│   ├── AppIcon.icns          # 应用图标（脚本生成）
-│   ├── Info.plist            # LSUIElement=true（菜单栏 App，无 Dock 图标）
-│   └── Resources/*.lproj     # 中英文本地化字符串
+│   ├── main.swift            # AppDelegate: status bar / popover / sampling timer
+│   ├── PowerSampler.swift    # powermetrics invocation + tolerant parsing (cross-macOS)
+│   ├── EnergyStore.swift     # cumulative energy + JSON persistence (hourly/daily aggregation)
+│   ├── ChartView.swift       # Core Graphics line chart (24h/7d/30d)
+│   ├── PanelController.swift # NSPopover panel layout & refresh
+│   ├── SettingsWindowController.swift # independent settings window
+│   ├── AlertManager.swift    # power/budget alerts (system notifications + debounce)
+│   ├── CSVExporter.swift     # CSV export (daily + hourly)
+│   ├── PrivilegeManager.swift# in-app authorization (native password prompt → sudoers)
+│   ├── Preferences.swift     # user preferences (interval/price/currency/mode/alerts/range)
+│   ├── Currency.swift        # currency/status mode/language/chart range enums
+│   ├── L10n.swift            # localization helpers + locale number formatting
+│   ├── AppIcon.icns          # app icon (script-generated)
+│   ├── Info.plist            # LSUIElement=true (menu bar app, no Dock icon)
+│   └── Resources/*.lproj     # CN/EN localized strings
 ├── scripts/
-│   ├── generate-icon.sh      # 脚本化生成 squircle 闪电图标
-│   ├── install-sudoers.sh    # sudo 免密配置（终端备选方式）
-│   └── package-dmg.sh        # 打包 DMG 用于分发
+│   ├── generate-icon.sh      # script to generate squircle bolt icon
+│   ├── install-sudoers.sh    # sudo passwordless setup (terminal alternative)
+│   └── package-dmg.sh        # package DMG for distribution
 ├── .github/workflows/
-│   └── release.yml           # GitHub Actions：打 tag 自动构建并发布 Release
-├── build.sh                  # 一键构建（编译 + 组装 .app + 图标 + 签名）
-├── README.md                 # 中文文档（本文件）
-└── README.en.md              # 英文文档
+│   └── release.yml           # GitHub Actions: auto-build & publish on tag push
+├── build.sh                  # one-click build (compile + assemble .app + icon + sign)
+├── README.md                 # English documentation (this file)
+└── README.zh.md              # Chinese documentation
 ```
+
+---
+
+## 🔄 Release Flow
+
+Releases are automated via GitHub Actions. To publish a new version:
+
+```bash
+git tag v0.02
+git push origin v0.02
+# GitHub Actions auto-builds, packages DMG, and creates the Release
+```
+
+Downloads: [GitHub Releases](https://github.com/StruggleYang/PowerCumul/releases)
 
 ---
 
 ## ❓ FAQ
 
-**Q: 为什么状态栏/面板显示"需要 powermetrics 权限"？**
-A: 还没配置 sudo 免密。点开面板，点橙色卡片里的 **「一键配置权限」** 按钮，输入一次开机密码即可（应用内完成，无需终端）。也可用终端：`sudo ./scripts/install-sudoers.sh`。
+**Q: Why does the panel say "powermetrics permission required"?**
+A: Passwordless sudo isn't configured yet. Click "Grant Permission" in the panel, or run `sudo ./scripts/install-sudoers.sh` once.
 
-**Q: 升级 macOS 后会不会失效？**
-A: 解析器采用容错策略：优先匹配新版 `Combined Power (CPU + GPU + ANE)`，回退到旧版 `Package Power`，最后回退到分量求和（CPU+GPU+ANE+DRAM）。能跨 macOS 版本稳定工作。
+**Q: Will it break after a macOS upgrade?**
+A: The parser is tolerant: it first matches the newer `Combined Power (CPU + GPU + ANE)`, falls back to the legacy `Package Power`, then falls back to summing components (CPU+GPU+ANE+DRAM). Works stably across macOS versions.
 
-**Q: 数值偏低怎么办？**
-A: 这是纯软件方案的固有限制（见上文"精度说明"）。若需精确数据请配合智能插座。
+**Q: Why are the numbers low?**
+A: This is an inherent limitation of pure software solutions (see "Accuracy" above). For precise data, use a smart plug.
 
-**Q: 怎么卸载？**
-A: 删除 App 即可；清理 sudo 规则：`sudo rm /etc/sudoers.d/powercumul`；清理数据：`rm -rf ~/Library/Application\ Support/PowerCumul`。
+**Q: How to uninstall?**
+A: Delete the app; clean up the sudo rule: `sudo rm /etc/sudoers.d/powercumul`; clean up data: `rm -rf ~/Library/Application\ Support/PowerCumul`.
