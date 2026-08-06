@@ -153,14 +153,14 @@ final class Preferences {
 
     // MARK: - 功率校正
 
-    /// 功率校正系数。默认 1.0（纯 SoC 功耗）。
-    /// 用户可用智能插座标定：墙功耗 ÷ SoC 功耗 = 系数（通常 1.1~1.4）。
-    /// 采样积分时用「SoC 功率 × 系数」估算整机墙功耗。
+    /// 功率校正系数。默认 1.2（Apple Silicon 中高负载下 墙功耗/SoC 功耗 的典型比值）。
+    /// 含电源转换损耗(~5-7%) + 板载/外设开销；负载越高越准，空闲会偏低（因整机有固定地板功耗）。
+    /// 用户可用智能插座精确标定：墙功耗 ÷ SoC 功耗 = 系数。
     var powerCorrectionFactor: Double {
         get {
             let v = defaults.double(forKey: Key.correctionFactor)
-            // 0 表示未设置，回退默认 1.0。
-            return v > 0 ? v : 1.0
+            // 0 表示从未设置过，用默认 1.2。
+            return v > 0 ? v : 1.2
         }
         set {
             // 限定 1.0~2.0 合理范围。
