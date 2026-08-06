@@ -41,6 +41,7 @@
 "footer.uptime.hours" = "Running %dh %02dm";
 "footer.uptime.mins" = "Running %dm";
 "footer.socEstimate" = "SoC estimate (not wall power)";
+"footer.calibrated" = "Calibrated wall power ×%.2f";
 
 // Chart
 "chart.empty" = "Waiting for data…";
@@ -87,6 +88,7 @@
 "group.data" = "Data";
 "settings.interval" = "Interval";
 "settings.price" = "Price";
+"settings.correction" = "Correction";
 "settings.currency" = "Currency";
 "settings.statusbar" = "Status Bar";
 "settings.language" = "Language";

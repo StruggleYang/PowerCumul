@@ -142,10 +142,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        lastSample = sample
-        store.add(sample: sample)
-        // 告警评估：功率/预算超标时弹系统通知（在后台线程即可）。
-        alertManager.evaluate(currentW: sample.totalMW / 1000, sample: sample)
+        // 应用功率校正系数：把 SoC 功耗估算成整机墙功耗。
+        // 系数默认 1.0（无校正），用户可在设置里用智能插座标定（通常 1.1~1.4）。
+        let corrected = sample.applying(correctionFactor: prefs.powerCorrectionFactor)
+        lastSample = corrected
+        store.add(sample: corrected)
+        // 告警评估用校正后的功率（告警阈值按墙功耗理解更直观）。
+        alertManager.evaluate(currentW: corrected.totalMW / 1000, sample: corrected)
         DispatchQueue.main.async { [weak self] in
             self?.updateStatusItemTitle()
             self?.refreshAll()

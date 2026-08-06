@@ -31,6 +31,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let exportButton = NSButton(title: "", target: nil, action: nil)
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "", target: nil, action: nil)
 
+    // 功率校正系数（滑块 + 数值显示）
+    private let correctionSlider = NSSlider()
+    private let correctionField = NSTextField(labelWithString: "")
+
     init(prefs: Preferences, store: EnergyStore?) {
         self.prefs = prefs
         self.store = store
@@ -46,7 +50,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         }
 
         let contentWidth = 400
-        let contentHeight = 640
+        let contentHeight = 670
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: contentWidth, height: contentHeight),
             styleMask: [.titled, .closable, .miniaturizable],
@@ -90,7 +94,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         y -= groupTitle(content, tr("group.sampling"), y: y, width: width) + 8
         y -= addRow(content, label: tr("settings.interval"), controls: [intervalField, intervalStepper], y: y, width: width)
         y -= addRow(content, label: tr("settings.currency"), controls: [currencyPopup], y: y, width: width)
-        y -= addRow(content, label: tr("settings.price"), controls: [priceField], y: y, width: width) + 18
+        y -= addRow(content, label: tr("settings.price"), controls: [priceField], y: y, width: width)
+        y -= addRow(content, label: tr("settings.correction"), controls: [correctionSlider, correctionField], y: y, width: width) + 18
 
         y -= groupTitle(content, tr("group.alerts"), y: y, width: width) + 8
         y -= addRow(content, label: tr("settings.alertPower"), controls: [alertPowerButton, alertPowerField], y: y, width: width)
@@ -204,6 +209,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
         launchAtLoginButton.target = self; launchAtLoginButton.action = #selector(launchAtLoginToggled)
         launchAtLoginButton.title = NSLocalizedString("settings.launchAtLogin", value: "开机自启", comment: "")
+
+        // 功率校正滑块：范围 1.0~1.6（覆盖常见整机/SoC 比值）。
+        correctionSlider.minValue = 1.0
+        correctionSlider.maxValue = 1.6
+        correctionSlider.target = self
+        correctionSlider.action = #selector(correctionChanged)
+        correctionSlider.controlSize = .small
+        correctionField.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        correctionField.alignment = .center
     }
 
     private func applyPrefsToControls() {
@@ -219,6 +233,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         alertBudgetButton.state = prefs.alertBudgetEnabled ? .on : .off
         alertBudgetField.doubleValue = prefs.alertBudgetThreshold
         launchAtLoginButton.state = SMAppService.mainApp.status != .notRegistered ? .on : .off
+        correctionSlider.doubleValue = prefs.powerCorrectionFactor
+        updateCorrectionField()
+    }
+
+    /// 刷新校正系数显示文本（如 "×1.20"）。
+    private func updateCorrectionField() {
+        correctionField.stringValue = String(format: "×%.2f", prefs.powerCorrectionFactor)
     }
 
     // MARK: - 事件
@@ -277,6 +298,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let v = alertBudgetField.doubleValue
         if v > 0 { prefs.alertBudgetThreshold = v }
         alertBudgetField.doubleValue = prefs.alertBudgetThreshold
+    }
+
+    @objc private func correctionChanged() {
+        // 滑块步进 0.05，量化到两位小数。
+        let v = (correctionSlider.doubleValue * 20).rounded() / 20
+        prefs.powerCorrectionFactor = v
+        correctionSlider.doubleValue = v
+        updateCorrectionField()
     }
 
     @objc private func exportCSV() {

@@ -41,6 +41,7 @@
 "footer.uptime.hours" = "运行 %d小时%02d分";
 "footer.uptime.mins" = "运行 %d分";
 "footer.socEstimate" = "SoC 估算值（非整机墙功耗）";
+"footer.calibrated" = "已校正墙功耗 ×%.2f";
 
 // 图表
 "chart.empty" = "等待数据…";
@@ -87,6 +88,7 @@
 "group.data" = "数据";
 "settings.interval" = "采样间隔";
 "settings.price" = "电价";
+"settings.correction" = "校正系数";
 "settings.currency" = "货币";
 "settings.statusbar" = "状态栏";
 "settings.language" = "语言";

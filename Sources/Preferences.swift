@@ -21,6 +21,7 @@ final class Preferences {
         static let alertBudgetOn = "alertBudgetEnabled"
         static let alertBudgetThreshold = "alertBudgetThreshold"
         static let chartRange = "chartRange"
+        static let correctionFactor = "powerCorrectionFactor"
     }
 
     private let defaults = UserDefaults.standard
@@ -145,6 +146,26 @@ final class Preferences {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.chartRange)
+            defaults.synchronize()
+            NotificationCenter.default.post(name: .prefsChanged, object: nil)
+        }
+    }
+
+    // MARK: - 功率校正
+
+    /// 功率校正系数。默认 1.0（纯 SoC 功耗）。
+    /// 用户可用智能插座标定：墙功耗 ÷ SoC 功耗 = 系数（通常 1.1~1.4）。
+    /// 采样积分时用「SoC 功率 × 系数」估算整机墙功耗。
+    var powerCorrectionFactor: Double {
+        get {
+            let v = defaults.double(forKey: Key.correctionFactor)
+            // 0 表示未设置，回退默认 1.0。
+            return v > 0 ? v : 1.0
+        }
+        set {
+            // 限定 1.0~2.0 合理范围。
+            let clamped = max(1.0, min(2.0, newValue))
+            defaults.set(clamped, forKey: Key.correctionFactor)
             defaults.synchronize()
             NotificationCenter.default.post(name: .prefsChanged, object: nil)
         }

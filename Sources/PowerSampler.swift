@@ -20,6 +20,18 @@ struct PowerSample {
     let dramMW: Double
     /// 解析来源说明（便于调试 / 面板提示）。
     let source: String
+
+    /// 返回一个所有功率字段都乘以校正系数的新采样。
+    /// 用于把 SoC 功耗估算成整机墙功耗（用户可用智能插座标定系数）。
+    func applying(correctionFactor: Double) -> PowerSample {
+        PowerSample(timestamp: timestamp,
+                    totalMW: totalMW * correctionFactor,
+                    cpuMW: cpuMW * correctionFactor,
+                    gpuMW: gpuMW * correctionFactor,
+                    aneMW: aneMW * correctionFactor,
+                    dramMW: dramMW * correctionFactor,
+                    source: source)
+    }
 }
 
 enum PowerSampler {

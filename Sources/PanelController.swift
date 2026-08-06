@@ -95,7 +95,13 @@ final class PanelController: NSViewController {
                                          df.string(from: snapshot.createdAt))
 
         uptimeLabel.stringValue = formatDuration(Date().timeIntervalSince(snapshot.createdAt))
-        estimateNote.stringValue = tr("footer.socEstimate")
+        // 标注动态化：系数>1 显示"已校正 ×N.NN"，否则提示"SoC 估算值（非整机墙功耗）"。
+        if prefs.powerCorrectionFactor > 1.001 {
+            estimateNote.stringValue = L10n.tr("footer.calibrated", "已校正墙功耗 ×%.2f",
+                                               prefs.powerCorrectionFactor)
+        } else {
+            estimateNote.stringValue = tr("footer.socEstimate")
+        }
 
         // 图表数据按当前区间切换：24h 用小时桶（值=Wh≈该小时平均W），
         // 7天/30天 用天桶（值=kWh，按桶大小放大到可比刻度）。
