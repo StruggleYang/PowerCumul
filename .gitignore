@@ -1,0 +1,17 @@
+# 构建产物
+build/
+ DerivedData/
+
+# macOS
+.DS_Store
+*.swp
+
+# Xcode（本项目不用 Xcode 工程，但以防万一）
+*.xcuserstate
+xcuserdata/
+
+# 个人数据（运行时生成，不入库）
+# 注意：不忽略 Sources/AppIcon.icns（它是源码产物，构建依赖它）
+
+# 工具计划文件（不入库）
+.zcode/

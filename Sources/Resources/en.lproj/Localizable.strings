@@ -1,0 +1,100 @@
+/* PowerCumul English localization */
+
+// App title
+"app.title" = "⚡ Power";
+
+// Real-time power
+"power.unit" = "W";
+"power.cpu" = "CPU";
+"power.gpu" = "GPU";
+"power.ane" = "ANE";
+
+// Energy
+"kWh.unit" = "kWh";
+
+// Cost & price
+"cost.label" = "≈ %@ %@/kWh";
+"cost.estimated" = "est.";
+
+// Currency units (per kWh)
+"unit.cny.perKWh" = "CNY/kWh";
+"unit.usd.perKWh" = "/kWh";
+"unit.eur.perKWh" = "/kWh";
+"unit.gbp.perKWh" = "/kWh";
+"unit.jpy.perKWh" = "/kWh";
+"unit.krw.perKWh" = "/kWh";
+"unit.rub.perKWh" = "/kWh";
+"unit.inr.perKWh" = "/kWh";
+"unit.twd.perKWh" = "/kWh";
+"unit.hkd.perKWh" = "/kWh";
+
+// Status bar modes
+"mode.power" = "Power";
+"mode.cost" = "Cost";
+"mode.kwh" = "Energy";
+"mode.combo" = "Combo";
+"mode.iconOnly" = "Icon";
+
+// Footer totals
+"footer.total" = "Total %@ kWh (since %@)";
+"footer.uptime.days" = "Running %dd %02dh";
+"footer.uptime.hours" = "Running %dh %02dm";
+"footer.uptime.mins" = "Running %dm";
+"footer.socEstimate" = "SoC estimate (not wall power)";
+
+// Chart
+"chart.empty" = "Waiting for data…";
+"chart.title" = "Power Trend";
+
+// Chart range
+"range.24h" = "24H";
+"range.7d" = "7D";
+"range.30d" = "30D";
+
+// Privilege
+"privilege.warning" = "⚠ powermetrics permission required to sample power";
+"privilege.button" = "Grant Permission";
+"privilege.processing" = "Authorizing…";
+"privilege.cancelled" = "❌ Authorization cancelled";
+"privilege.failed" = "❌ Authorization failed: %@";
+
+// Alerts
+"alert.power.title" = "High Power";
+"alert.power.body" = "Current power %.0f W exceeds threshold %.0f W";
+"alert.budget.title" = "Over Daily Budget";
+"alert.budget.body" = "Today's cost %@ %.2f exceeds budget %.2f";
+
+// Export
+"export.title" = "Export Data";
+"csv.date" = "Date";
+"csv.kwh" = "Energy(kWh)";
+"csv.cost" = "Cost";
+"csv.hour" = "Time(hour)";
+"csv.wh" = "Energy(Wh)";
+"csv.total" = "Total(kWh)";
+"csv.today" = "Today(kWh)";
+"csv.price" = "Price";
+
+// Settings
+"settings.title" = "Settings";
+"settings.sectionTitle" = "Settings";
+"settings.windowTitle" = "PowerCumul Settings";
+"settings.open" = "⚙ Open Settings";
+"settings.capabilities" = "Interval · Alerts · Currency · Status Bar · Language · Export";
+"group.sampling" = "Sampling & Currency";
+"group.alerts" = "Alerts";
+"group.display" = "Display & Language";
+"group.data" = "Data";
+"settings.interval" = "Interval";
+"settings.price" = "Price";
+"settings.currency" = "Currency";
+"settings.statusbar" = "Status Bar";
+"settings.language" = "Language";
+"settings.launchAtLogin" = "Launch at Login";
+"settings.seconds" = "%d s";
+"lang.system" = "Follow System";
+"settings.alertPower" = "Power Alert";
+"settings.powerAlert" = "Over";
+"settings.alertBudget" = "Daily Budget";
+"settings.budgetAlert" = "Over";
+"settings.export" = "Export CSV";

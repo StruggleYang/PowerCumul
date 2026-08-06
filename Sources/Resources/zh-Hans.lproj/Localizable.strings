@@ -1,0 +1,100 @@
+/* PowerCumul 中文（简体）本地化资源 */
+
+// 应用标题
+"app.title" = "⚡ 用电监控";
+
+// 实时功率
+"power.unit" = "W";
+"power.cpu" = "CPU";
+"power.gpu" = "GPU";
+"power.ane" = "ANE";
+
+// 电量
+"kWh.unit" = "kWh";
+
+// 费用与电价
+"cost.label" = "约 %@ %@/kWh";
+"cost.estimated" = "估算";
+
+// 货币单位（每 kWh）
+"unit.cny.perKWh" = "元/kWh";
+"unit.usd.perKWh" = "/kWh";
+"unit.eur.perKWh" = "/kWh";
+"unit.gbp.perKWh" = "/kWh";
+"unit.jpy.perKWh" = "/kWh";
+"unit.krw.perKWh" = "/kWh";
+"unit.rub.perKWh" = "/kWh";
+"unit.inr.perKWh" = "/kWh";
+"unit.twd.perKWh" = "/kWh";
+"unit.hkd.perKWh" = "/kWh";
+
+// 状态栏显示模式
+"mode.power" = "功率";
+"mode.cost" = "费用";
+"mode.kwh" = "电量";
+"mode.combo" = "组合";
+"mode.iconOnly" = "图标";
+
+// 底部累计信息
+"footer.total" = "累计 %@ kWh（自 %@）";
+"footer.uptime.days" = "运行 %d天%02d小时";
+"footer.uptime.hours" = "运行 %d小时%02d分";
+"footer.uptime.mins" = "运行 %d分";
+"footer.socEstimate" = "SoC 估算值（非整机墙功耗）";
+
+// 图表
+"chart.empty" = "等待数据…";
+"chart.title" = "功率趋势";
+
+// 图表区间
+"range.24h" = "24H";
+"range.7d" = "7D";
+"range.30d" = "30D";
+
+// 权限
+"privilege.warning" = "⚠ 需要 powermetrics 权限才能采样功率";
+"privilege.button" = "一键配置权限";
+"privilege.processing" = "授权中…";
+"privilege.cancelled" = "❌ 已取消授权";
+"privilege.failed" = "❌ 授权失败：%@";
+
+// 告警
+"alert.power.title" = "功率过高";
+"alert.power.body" = "当前功率 %.0f W，超过阈值 %.0f W";
+"alert.budget.title" = "超出日预算";
+"alert.budget.body" = "今日电费已 %@ %.2f，超过预算 %.2f";
+
+// 导出
+"export.title" = "导出数据";
+"csv.date" = "日期";
+"csv.kwh" = "电量(kWh)";
+"csv.cost" = "费用";
+"csv.hour" = "时间(时)";
+"csv.wh" = "能量(Wh)";
+"csv.total" = "累计电量(kWh)";
+"csv.today" = "今日电量(kWh)";
+"csv.price" = "电价";
+
+// 设置
+"settings.title" = "设置";
+"settings.sectionTitle" = "设置";
+"settings.windowTitle" = "PowerCumul 设置";
+"settings.open" = "⚙ 打开设置";
+"settings.capabilities" = "采样间隔 · 告警通知 · 货币电价 · 状态栏 · 语言 · 数据导出";
+"group.sampling" = "采样与货币";
+"group.alerts" = "告警";
+"group.display" = "显示与语言";
+"group.data" = "数据";
+"settings.interval" = "采样间隔";
+"settings.price" = "电价";
+"settings.currency" = "货币";
+"settings.statusbar" = "状态栏";
+"settings.language" = "语言";
+"settings.launchAtLogin" = "开机自启";
+"settings.seconds" = "%d 秒";
+"lang.system" = "跟随系统";
+"settings.alertPower" = "功率告警";
+"settings.powerAlert" = "超过";
+"settings.alertBudget" = "日预算";
+"settings.budgetAlert" = "超过";
+"settings.export" = "导出 CSV";

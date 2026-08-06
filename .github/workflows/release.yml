@@ -1,0 +1,53 @@
+# 打 tag（v*）时自动构建 macOS App 并发布 Release。
+# 产出：PowerCumul-<version>.dmg
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'   # 推送 v0.01、v0.02 等 tag 触发
+
+jobs:
+  release:
+    runs-on: macos-14   # Apple Silicon runner，原生 arm64 构建
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 选择 Xcode
+        run: sudo xcode-select -s /Applications/Xcode_*.app || true
+
+      - name: 构建 App
+        run: ./build.sh
+
+      - name: 打包 DMG
+        run: ./scripts/package-dmg.sh
+
+      - name: 重命名 DMG 为带版本号
+        id: dmg
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          cp build/PowerCumul-*.dmg "PowerCumul-${VERSION}.dmg"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "asset=PowerCumul-${VERSION}.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: 创建 GitHub Release 并上传 DMG
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PowerCumul ${{ steps.dmg.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ## PowerCumul v${{ steps.dmg.outputs.version }}
+
+            Mac mini 用电累计监控 —— 轻量菜单栏 App。
+
+            ### 安装
+            1. 下载 `PowerCumul-${{ steps.dmg.outputs.version }}.dmg`
+            2. 打开 DMG，把 PowerCumul 拖到「应用程序」
+            3. 首次打开：右键点击 App → 打开 → 仍要打开（仅一次，绕过 Gatekeeper）
+            4. 运行后点状态栏 ⚡ 图标 → 面板里「一键配置权限」
+
+            > 该版本为 ad-hoc 签名（无 Apple Developer 账号），首次打开需手动信任。
+          files: |
+            ${{ steps.dmg.outputs.asset }}
