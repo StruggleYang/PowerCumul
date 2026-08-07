@@ -49,22 +49,37 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        let contentWidth = 400
-        let contentHeight = 670
+        let contentWidth = 420
+        let contentHeight = 560
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: contentWidth, height: contentHeight),
-            styleMask: [.titled, .closable, .miniaturizable],
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         w.title = NSLocalizedString("settings.windowTitle", value: "PowerCumul 设置", comment: "")
+        w.titlebarAppearsTransparent = false
+        w.titleVisibility = .visible
         w.isReleasedWhenClosed = false
         w.delegate = self
-        w.minSize = NSSize(width: CGFloat(contentWidth), height: CGFloat(contentHeight))
-        w.maxSize = NSSize(width: CGFloat(contentWidth), height: CGFloat(contentHeight))
+        w.minSize = NSSize(width: 380, height: 480)
 
-        // frame-based 内容视图：直接绝对坐标排列，不依赖 Auto Layout。
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: contentWidth, height: contentHeight))
-        layoutContent(in: content)
-        w.contentView = content
+        // NSScrollView 承载分组卡片，内容多时自动滚动。
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
+        let content = NSView()
+        content.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = content
+
+        buildGroupedContent(in: content)
+        w.contentView = scroll
+        // documentView 宽度跟随滚动视图，高度由内容撑开。
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            content.bottomAnchor.constraint(equalTo: scroll.contentView.bottomAnchor),
+            content.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+        ])
 
         w.center()
         window = w
@@ -78,88 +93,91 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window = nil
     }
 
-    // MARK: - frame-based 布局
+    // MARK: - 分组卡片布局（Auto Layout）
 
-    /// 用绝对坐标把所有控件排列进 content 视图。
-    /// 坐标系：NSView 左下角为原点，y 向上。从顶部往下排。
-    private func layoutContent(in content: NSView) {
+    /// 在 content 中构建垂直排列的分组卡片。
+    private func buildGroupedContent(in content: NSView) {
         configureControls()
         applyPrefsToControls()
 
-        let width = content.bounds.width
-        var y = content.bounds.height   // 从顶部开始，y 递减向下
+        let sampling = makeGroup(title: tr("group.sampling"), rows: [
+            (tr("settings.interval"),  [intervalField, intervalStepper]),
+            (tr("settings.currency"),  [currencyPopup]),
+            (tr("settings.price"),     [priceField]),
+            (tr("settings.correction"),[correctionSlider, correctionField]),
+        ])
+        let alerts = makeGroup(title: tr("group.alerts"), rows: [
+            (tr("settings.alertPower"),  [alertPowerButton, alertPowerField]),
+            (tr("settings.alertBudget"), [alertBudgetButton, alertBudgetField]),
+        ])
+        let display = makeGroup(title: tr("group.display"), rows: [
+            (tr("settings.statusbar"), [statusModeSelector]),
+            (tr("settings.language"),  [languagePopup]),
+            (nil, [launchAtLoginButton]),
+        ])
+        let data = makeGroup(title: tr("group.data"), rows: [
+            (nil, [exportButton]),
+        ])
 
-        // 四个分组的配置：标题 + 行。
-        // 从上到下顺序：采样与货币 → 告警 → 显示与语言 → 数据。
-        y -= groupTitle(content, tr("group.sampling"), y: y, width: width) + 8
-        y -= addRow(content, label: tr("settings.interval"), controls: [intervalField, intervalStepper], y: y, width: width)
-        y -= addRow(content, label: tr("settings.currency"), controls: [currencyPopup], y: y, width: width)
-        y -= addRow(content, label: tr("settings.price"), controls: [priceField], y: y, width: width)
-        y -= addRow(content, label: tr("settings.correction"), controls: [correctionSlider, correctionField], y: y, width: width) + 18
-
-        y -= groupTitle(content, tr("group.alerts"), y: y, width: width) + 8
-        y -= addRow(content, label: tr("settings.alertPower"), controls: [alertPowerButton, alertPowerField], y: y, width: width)
-        y -= addRow(content, label: tr("settings.alertBudget"), controls: [alertBudgetButton, alertBudgetField], y: y, width: width) + 18
-
-        y -= groupTitle(content, tr("group.display"), y: y, width: width) + 8
-        y -= addRow(content, label: tr("settings.statusbar"), controls: [statusModeSelector], y: y, width: width)
-        y -= addRow(content, label: tr("settings.language"), controls: [languagePopup], y: y, width: width)
-        y -= addRow(content, label: nil, controls: [launchAtLoginButton], y: y, width: width) + 18
-
-        y -= groupTitle(content, tr("group.data"), y: y, width: width) + 8
-        _ = addRow(content, label: nil, controls: [exportButton], y: y, width: width)
+        let stack = NSStackView(views: [sampling, alerts, display, data])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 16
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 20, bottom: 16, right: 20)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: content.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        ])
     }
 
-    /// 添加一个分组标题，返回占用高度。
-    private func groupTitle(_ parent: NSView, _ text: String, y: CGFloat, width: CGFloat) -> CGFloat {
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 12, weight: .semibold)
-        label.textColor = .controlAccentColor
-        let h: CGFloat = 20
-        label.frame = NSRect(x: 20, y: y - h, width: width - 40, height: h)
-        parent.addSubview(label)
-        return h
-    }
+    /// 一个分组：标题 + NSGridView（左列标签右对齐统一宽度，右列控件垂直居中）。
+    private func makeGroup(title: String, rows: [(String?, [NSView])]) -> NSView {
+        let titleLabel = NSTextField(labelWithString: title)
+        titleLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        titleLabel.textColor = .secondaryLabelColor
 
-    /// 添加一行：左侧标签（可空）+ 右侧控件，返回行高（28）。
-    private func addRow(_ parent: NSView, label: String?, controls: [NSView], y: CGFloat, width: CGFloat) -> CGFloat {
-        let rowH: CGFloat = 28
-        let labelWidth: CGFloat = 80
-        let padding: CGFloat = 20
-        let baseY = y - rowH
+        let grid = NSGridView()
+        grid.rowSpacing = 8
+        grid.columnSpacing = 10
+        grid.yPlacement = .center
+        grid.xPlacement = .leading
+        grid.translatesAutoresizingMaskIntoConstraints = false
 
-        if let labelText = label {
-            let l = NSTextField(labelWithString: labelText)
-            l.font = .systemFont(ofSize: 11)
-            l.alignment = .right
-            l.lineBreakMode = .byTruncatingTail
-            l.frame = NSRect(x: padding, y: baseY + 6, width: labelWidth, height: 16)
-            parent.addSubview(l)
+        for (labelText, controls) in rows {
+            // 左列：标签（无标签则用空占位视图，保持列对齐）。
+            let leftView: NSView
+            if let lt = labelText {
+                let l = NSTextField(labelWithString: lt)
+                l.font = .systemFont(ofSize: 11)
+                l.alignment = .right
+                l.textColor = .labelColor
+                l.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+                leftView = l
+            } else {
+                leftView = NSView()
+            }
+            // 右列：控件横向排列，垂直居中。
+            let controlRow = NSStackView(views: controls)
+            controlRow.orientation = .horizontal
+            controlRow.alignment = .centerY
+            controlRow.spacing = 6
+            grid.addRow(with: [leftView, controlRow])
         }
+        // 第一列统一宽度，让所有标签右对齐到同一条线。
+        grid.column(at: 0).width = 90
 
-        // 控件从右往左或从左往右排列在标签右侧区域。
-        let controlsX = padding + labelWidth + 12
-        let controlsWidth = width - controlsX - padding
-        // 简单地横向依次摆放；每个控件给固定宽度。
-        var cx = controlsX
-        for c in controls {
-            let cw = controlWidth(c, available: controlsWidth - (cx - controlsX))
-            c.frame = NSRect(x: cx, y: baseY + 2, width: cw, height: 24)
-            c.autoresizingMask = [.minXMargin]   // 右侧固定，跟随窗口宽度调整左边距
-            parent.addSubview(c)
-            cx += cw + 8
-        }
-        return rowH
+        let col = NSStackView(views: [titleLabel, grid])
+        col.orientation = .vertical
+        col.alignment = .leading
+        col.spacing = 6
+        col.translatesAutoresizingMaskIntoConstraints = false
+        return col
     }
 
-    /// 给控件一个合理宽度。
-    private func controlWidth(_ c: NSView, available: CGFloat) -> CGFloat {
-        if c is NSStepper { return 18 }
-        if c is NSPopUpButton { return min(120, available) }
-        if c is NSSegmentedControl { return available }
-        if c is NSButton { return min(160, available) }
-        return min(80, available)   // NSTextField 输入框
-    }
 
     // MARK: - 控件配置（与原面板逻辑一致）
 
