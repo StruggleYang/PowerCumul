@@ -193,6 +193,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         intervalStepper.minValue = 1; intervalStepper.maxValue = 60
         intervalStepper.increment = 1; intervalStepper.valueWraps = false
         intervalStepper.target = self; intervalStepper.action = #selector(intervalChanged)
+        // NSStepper 默认拥抱优先级低，会被 StackView 拉伸导致右侧大片空白。
+        // 强拥抱 + 固定宽度（约 19pt 是两箭头的固有宽度），保持紧凑。
+        intervalStepper.setContentHuggingPriority(.required, for: .horizontal)
+        intervalStepper.widthAnchor.constraint(equalToConstant: 19).isActive = true
 
         currencyPopup.addItems(withTitles: Currency.allCases.map { $0.displayName })
         currencyPopup.target = self; currencyPopup.action = #selector(currencyChanged)
