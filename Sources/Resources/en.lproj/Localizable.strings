@@ -53,8 +53,8 @@
 "range.30d" = "30D";
 
 // Privilege
-"privilege.warning" = "⚠ powermetrics permission required to sample power";
-"privilege.button" = "Grant Permission";
+"privilege.warning" = "Authorization required to sample power";
+"privilege.button" = "Grant Access";
 "privilege.processing" = "Authorizing…";
 "privilege.cancelled" = "❌ Authorization cancelled";
 "privilege.failed" = "❌ Authorization failed: %@";
@@ -93,10 +93,12 @@
 "settings.statusbar" = "Status Bar";
 "settings.language" = "Language";
 "settings.launchAtLogin" = "Launch at Login";
+"settings.startup" = "Startup";
+"settings.data" = "Data";
 "settings.seconds" = "%d s";
 "lang.system" = "Follow System";
 "settings.alertPower" = "Power Alert";
 "settings.powerAlert" = "Over";
 "settings.alertBudget" = "Daily Budget";
 "settings.budgetAlert" = "Over";
-"settings.export" = "↓ Export CSV";
+"settings.export" = "Export CSV";

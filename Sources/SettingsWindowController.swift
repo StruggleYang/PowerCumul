@@ -113,8 +113,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let display = makeGroup(title: tr("group.display"), rows: [
             (tr("settings.statusbar"), [statusModeSelector]),
             (tr("settings.language"),  [languagePopup]),
-            (nil, [launchAtLoginButton]),
-            (nil, [exportButton]),
+            (tr("settings.startup"),   [launchAtLoginButton]),
+            (tr("settings.data"),      [exportButton]),
         ])
 
         let stack = NSStackView(views: [sampling, alerts, display])
@@ -195,6 +195,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         priceField.target = self; priceField.action = #selector(priceChanged)
         priceField.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         priceField.alignment = .right; priceField.isBordered = true; priceField.drawsBackground = true
+        priceField.widthAnchor.constraint(equalToConstant: 70).isActive = true
 
         let segFont = NSFont.systemFont(ofSize: NSFont.systemFontSize(for: .small))
         statusModeSelector.segmentCount = StatusItemMode.allCases.count
@@ -214,20 +215,25 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         alertPowerField.alignment = .right
         alertPowerField.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         alertPowerField.isBordered = true; alertPowerField.drawsBackground = true
+        // 固定宽度，避免被 checkbox 挤压到不可见。
+        alertPowerField.widthAnchor.constraint(equalToConstant: 60).isActive = true
 
         alertBudgetButton.target = self; alertBudgetButton.action = #selector(alertBudgetToggled)
         alertBudgetField.target = self; alertBudgetField.action = #selector(alertBudgetThresholdChanged)
         alertBudgetField.alignment = .right
         alertBudgetField.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         alertBudgetField.isBordered = true; alertBudgetField.drawsBackground = true
+        alertBudgetField.widthAnchor.constraint(equalToConstant: 60).isActive = true
 
         exportButton.bezelStyle = .roundRect; exportButton.controlSize = .regular
         exportButton.font = .systemFont(ofSize: 11, weight: .regular)
-        exportButton.title = NSLocalizedString("settings.export", value: "↓ 导出 CSV", comment: "")
+        exportButton.title = NSLocalizedString("settings.export", value: "导出 CSV", comment: "")
         exportButton.target = self; exportButton.action = #selector(exportCSV)
+        exportButton.widthAnchor.constraint(equalToConstant: 100).isActive = true
 
         launchAtLoginButton.target = self; launchAtLoginButton.action = #selector(launchAtLoginToggled)
-        launchAtLoginButton.title = NSLocalizedString("settings.launchAtLogin", value: "开机自启", comment: "")
+        // 左侧标签已说明，checkbox 不再显示文字，纯开关。
+        launchAtLoginButton.title = ""
 
         // 功率校正滑块：范围 1.0~1.6（覆盖常见整机/SoC 比值）。
         correctionSlider.minValue = 1.0

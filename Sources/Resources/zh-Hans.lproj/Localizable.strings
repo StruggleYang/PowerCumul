@@ -53,8 +53,8 @@
 "range.30d" = "30D";
 
 // 权限
-"privilege.warning" = "⚠ 需要 powermetrics 权限才能采样功率";
-"privilege.button" = "一键配置权限";
+"privilege.warning" = "需要授权才能采样功率";
+"privilege.button" = "一键授权";
 "privilege.processing" = "授权中…";
 "privilege.cancelled" = "❌ 已取消授权";
 "privilege.failed" = "❌ 授权失败：%@";
@@ -93,10 +93,12 @@
 "settings.statusbar" = "状态栏";
 "settings.language" = "语言";
 "settings.launchAtLogin" = "开机自启";
+"settings.startup" = "启动";
+"settings.data" = "数据";
 "settings.seconds" = "%d 秒";
 "lang.system" = "跟随系统";
 "settings.alertPower" = "功率告警";
 "settings.powerAlert" = "超过";
 "settings.alertBudget" = "日预算";
 "settings.budgetAlert" = "超过";
-"settings.export" = "↓ 导出 CSV";
+"settings.export" = "导出 CSV";
