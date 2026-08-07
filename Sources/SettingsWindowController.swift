@@ -114,12 +114,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             (tr("settings.statusbar"), [statusModeSelector]),
             (tr("settings.language"),  [languagePopup]),
             (nil, [launchAtLoginButton]),
-        ])
-        let data = makeGroup(title: tr("group.data"), rows: [
             (nil, [exportButton]),
         ])
 
-        let stack = NSStackView(views: [sampling, alerts, display, data])
+        let stack = NSStackView(views: [sampling, alerts, display])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -220,9 +218,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         alertBudgetField.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         alertBudgetField.isBordered = true; alertBudgetField.drawsBackground = true
 
-        exportButton.bezelStyle = .rounded; exportButton.controlSize = .small
-        exportButton.font = .systemFont(ofSize: 11, weight: .medium)
-        exportButton.title = NSLocalizedString("settings.export", value: "导出 CSV", comment: "")
+        exportButton.bezelStyle = .roundRect; exportButton.controlSize = .regular
+        exportButton.font = .systemFont(ofSize: 11, weight: .regular)
+        exportButton.title = NSLocalizedString("settings.export", value: "↓ 导出 CSV", comment: "")
         exportButton.target = self; exportButton.action = #selector(exportCSV)
 
         launchAtLoginButton.target = self; launchAtLoginButton.action = #selector(launchAtLoginToggled)

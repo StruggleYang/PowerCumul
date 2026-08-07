@@ -99,4 +99,4 @@
 "settings.powerAlert" = "Over";
 "settings.alertBudget" = "Daily Budget";
 "settings.budgetAlert" = "Over";
-"settings.export" = "Export CSV";
+"settings.export" = "↓ Export CSV";
