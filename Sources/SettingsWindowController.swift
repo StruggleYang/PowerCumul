@@ -146,7 +146,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         grid.translatesAutoresizingMaskIntoConstraints = false
 
         for (labelText, controls) in rows {
-            // 左列：标签（无标签则用空占位视图，保持列对齐）。
+            // 左列：标签（无标签则用固定宽度占位视图，保证列不被压缩、控件对齐）。
             let leftView: NSView
             if let lt = labelText {
                 let l = NSTextField(labelWithString: lt)
@@ -156,7 +156,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                 l.setContentHuggingPriority(.defaultHigh, for: .horizontal)
                 leftView = l
             } else {
-                leftView = NSView()
+                // 无标签行：用占位视图撑开标签列，加固定宽度约束
+                // 避免空视图( intrinsic size 0)导致控件被顶到左侧、与其他行错位。
+                let spacer = NSView()
+                spacer.translatesAutoresizingMaskIntoConstraints = false
+                spacer.widthAnchor.constraint(equalToConstant: 90).isActive = true
+                leftView = spacer
             }
             // 右列：控件横向排列，垂直居中。
             let controlRow = NSStackView(views: controls)
@@ -165,8 +170,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             controlRow.spacing = 6
             grid.addRow(with: [leftView, controlRow])
         }
-        // 第一列统一宽度，让所有标签右对齐到同一条线。
-        grid.column(at: 0).width = 90
 
         let col = NSStackView(views: [titleLabel, grid])
         col.orientation = .vertical
