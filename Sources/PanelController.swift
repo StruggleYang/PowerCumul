@@ -175,7 +175,7 @@ final class PanelController: NSViewController {
         summaryBox.spacing = 10   // 实时功率与今日电量之间的间距，紧凑
         summaryBox.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
 
-        // 图表 + 时段切换组合成一个区块。
+        // 图表 + 时段切换组合成一个区块。时段切换行与图表之间留出足够间距。
         let chartHeader = NSTextField(labelWithString: tr("chart.title"))
         chartHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
         chartHeader.textColor = .secondaryLabelColor
@@ -183,7 +183,10 @@ final class PanelController: NSViewController {
         chartHeaderRow.orientation = .horizontal
         chartHeaderRow.alignment = .centerY
         chartHeaderRow.distribution = .equalCentering
-        let chartBox = vbox([chartHeaderRow, chartView])
+        let chartBox = NSStackView(views: [chartHeaderRow, chartView])
+        chartBox.orientation = .vertical
+        chartBox.alignment = .centerX
+        chartBox.spacing = 10   // 时段切换与图表之间的间距（vbox 默认 2 太挤）
         let footerBox = vbox([totalLabel, uptimeLabel, estimateNote])
         let settingsBox = settingsEntryRow   // 横向紧凑入口
 
