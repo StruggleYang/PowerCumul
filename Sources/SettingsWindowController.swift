@@ -168,6 +168,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             controlRow.orientation = .horizontal
             controlRow.alignment = .centerY
             controlRow.spacing = 6
+            // 关键：设 .fill + 强拥抱，让控件紧凑排列，不被 NSGridView 的宽列拉伸/分散留白。
+            controlRow.distribution = .fill
+            controlRow.setHuggingPriority(.required, for: .horizontal)
+            controlRow.translatesAutoresizingMaskIntoConstraints = false
             grid.addRow(with: [leftView, controlRow])
         }
 
@@ -185,6 +189,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private func configureControls() {
         intervalField.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         intervalField.alignment = .center
+        intervalField.widthAnchor.constraint(equalToConstant: 50).isActive = true
         intervalStepper.minValue = 1; intervalStepper.maxValue = 60
         intervalStepper.increment = 1; intervalStepper.valueWraps = false
         intervalStepper.target = self; intervalStepper.action = #selector(intervalChanged)
