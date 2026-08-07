@@ -37,7 +37,8 @@ final class ChartView: NSView {
         super.init(coder: coder)
         wantsLayer = true
         layer?.cornerRadius = 8
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        // 不设 layer 背景色：让 popover 的毛玻璃背景透过来，
+        // 与面板其他区域保持一致（避免图表出现不透明白色块）。
     }
 
     override var intrinsicContentSize: NSSize {
@@ -46,8 +47,7 @@ final class ChartView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let bounds = self.bounds
-        NSColor.controlBackgroundColor.setFill()
-        bounds.fill()
+        // 不填充背景：保持透明，融入 popover 毛玻璃。
 
         guard !data.isEmpty else {
             drawEmpty(in: bounds)
