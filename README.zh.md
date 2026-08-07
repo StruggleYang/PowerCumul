@@ -1,6 +1,16 @@
-# PowerCumul — Mac mini 用电累计监控
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="PowerCumul 图标" />
+</p>
 
-[中文](./README.zh.md) | **English** → [README.md](./README.md)
+<h1 align="center">PowerCumul</h1>
+
+<p align="center">Mac mini 用电累计监控</p>
+
+<p align="center">
+  <strong>中文</strong> | <a href="./README.md">English</a>
+</p>
+
+---
 
 一个轻量的 macOS 菜单栏 App，用于监控 Mac mini 的累计用电量。状态栏点开即看面板：实时功率、今日累计 kWh、24 小时功率曲线、估算电费。**纯软件方案，不依赖任何硬件。**
 

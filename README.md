@@ -1,6 +1,16 @@
-# PowerCumul — Mac mini Power Monitoring
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="PowerCumul icon" />
+</p>
 
-**English** | [中文](./README.zh.md)
+<h1 align="center">PowerCumul</h1>
+
+<p align="center">Mac mini Cumulative Power Monitoring</p>
+
+<p align="center">
+  <strong>English</strong> | <a href="./README.zh.md">中文</a>
+</p>
+
+---
 
 A lightweight macOS menu bar app to track cumulative power consumption of your Mac mini. Click the status bar icon to see real-time power, today's energy in kWh, power trend charts, and estimated cost. **Pure software solution — no hardware required.**
 
