@@ -37,11 +37,6 @@ final class PanelController: NSViewController {
     // 图表时段切换（保留在主面板）
     private let chartRangeSelector = NSSegmentedControl()
 
-    // 设置入口：打开按钮 + 能力摘要小字（横向紧凑一行）
-    private let openSettingsButton = NSButton(title: "", target: nil, action: nil)
-    private let capabilitiesLabel = NSTextField(labelWithString: "")
-    private let settingsEntryRow = NSStackView()
-
     private let prefs: Preferences
     private weak var storeRef: EnergyStore?
 
@@ -162,7 +157,6 @@ final class PanelController: NSViewController {
         estimateNote.alignment = .center
 
         buildPrivilegeBox()
-        buildSettingsEntry()
         configureChartRangeSelector()   // 图表时段分段控件
 
         // 实时功率 + 今日电量合并成紧凑一块（中间只留小间距），
@@ -188,7 +182,6 @@ final class PanelController: NSViewController {
         chartBox.alignment = .centerX
         chartBox.spacing = 10   // 时段切换与图表之间的间距（vbox 默认 2 太挤）
         let footerBox = vbox([totalLabel, uptimeLabel, estimateNote])
-        let settingsBox = settingsEntryRow   // 横向紧凑入口
 
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -196,7 +189,7 @@ final class PanelController: NSViewController {
         stack.spacing = 9
         stack.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
 
-        let fullWidthViews: [NSView] = [title, summaryBox, chartBox, footerBox, privilegeBox, settingsBox]
+        let fullWidthViews: [NSView] = [title, summaryBox, chartBox, footerBox, privilegeBox]
         for v in fullWidthViews {
             stack.addArrangedSubview(v)
             stack.setCustomSpacing(8, after: v)
@@ -269,37 +262,6 @@ final class PanelController: NSViewController {
     }
 
     // MARK: - 设置入口（按钮 + 能力摘要）
-
-    /// 主面板底部「打开设置」入口：按钮 + 右侧能力摘要小字，横向紧凑一行。
-    private func buildSettingsEntry() {
-        openSettingsButton.title = tr("settings.open")
-        openSettingsButton.bezelStyle = .rounded
-        openSettingsButton.controlSize = .small
-        openSettingsButton.font = .systemFont(ofSize: 11, weight: .medium)
-        openSettingsButton.target = self
-        openSettingsButton.action = #selector(openSettings)
-
-        capabilitiesLabel.font = .systemFont(ofSize: 9)
-        capabilitiesLabel.textColor = .tertiaryLabelColor
-        capabilitiesLabel.alignment = .left
-        capabilitiesLabel.lineBreakMode = .byTruncatingTail
-        capabilitiesLabel.stringValue = tr("settings.capabilities")
-        capabilitiesLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-
-        // 横向：按钮 + 说明文字，单行，不占多余纵向空间。
-        settingsEntryRow.orientation = .horizontal
-        settingsEntryRow.alignment = .centerY
-        settingsEntryRow.spacing = 8
-        settingsEntryRow.distribution = .fill
-        settingsEntryRow.addArrangedSubview(openSettingsButton)
-        settingsEntryRow.addArrangedSubview(capabilitiesLabel)
-        settingsEntryRow.translatesAutoresizingMaskIntoConstraints = false
-    }
-
-    /// 打开独立设置窗口（由 AppDelegate 提供窗口实例）。
-    @objc private func openSettings() {
-        NotificationCenter.default.post(name: .openSettingsRequested, object: nil)
-    }
 
     // MARK: - 图表时段
 

@@ -12,6 +12,7 @@
 //
 
 import AppKit
+import ServiceManagement
 
 // MARK: - 入口
 
@@ -33,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var panelController: PanelController!
-    private var settingsWindow: SettingsWindowController?
 
     private let prefs = Preferences()
     private let store = EnergyStore()
@@ -58,9 +58,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                    accessibilityDescription: "PowerCumul")
             button.imagePosition = .imageLeading
             button.target = self
-            button.action = #selector(togglePopover(_:))
+            button.action = #selector(statusItemClicked(_:))
+            // 接收右键事件，用于弹出设置菜单。
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         updateStatusItemTitle()
+    }
+
+    /// 状态栏点击：左键切换面板，右键弹设置菜单。
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp {
+            // 右键：弹设置菜单。
+            buildSettingsMenu().popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        } else {
+            // 左键：切换主面板。
+            togglePopover(sender)
+        }
     }
 
     /// 刷新状态栏文字（功率/费用/电量/组合/仅图标，由偏好决定）。
@@ -169,50 +183,163 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(privilegeGranted),
             name: .privilegeGranted, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(openSettingsRequested),
-            name: .openSettingsRequested, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(languageChangeRequested),
-            name: .languageChangeRequested, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(settingsWindowClosed),
-            name: .settingsWindowClosed, object: nil)
     }
 
-    /// 打开独立设置窗口（若已打开则前置）。
-    /// 菜单栏 App（.accessory 策略）下，新窗口需要显式激活才能显示到前台。
-    @objc private func openSettingsRequested() {
-        // 先关闭弹出面板，避免遮挡焦点切换。
-        if popover.isShown { popover.performClose(nil) }
+    // MARK: - 右键设置菜单
 
-        if settingsWindow == nil {
-            settingsWindow = SettingsWindowController(prefs: prefs, store: store)
+    /// 构建右键设置菜单。NSMenu 系统托管，无布局问题。
+    private func buildSettingsMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        // 采样间隔子菜单
+        let intervalMenu = NSMenu()
+        for sec in [1, 5, 15, 30, 60] {
+            let item = intervalMenu.addItem(withTitle: "\(sec)s", action: #selector(setInterval(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = prefs.sampleIntervalSec == sec ? .on : .off
+            item.representedObject = sec
+        }
+        menu.addItem(withTitle: NSLocalizedString("menu.interval", value: "采样间隔", comment: ""), action: nil, keyEquivalent: "").submenu = intervalMenu
+
+        // 货币子菜单
+        let currencyMenu = NSMenu()
+        for c in Currency.allCases {
+            let item = currencyMenu.addItem(withTitle: c.displayName, action: #selector(setCurrency(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = prefs.currency == c ? .on : .off
+            item.representedObject = c.rawValue
+        }
+        menu.addItem(withTitle: NSLocalizedString("menu.currency", value: "货币", comment: ""), action: nil, keyEquivalent: "").submenu = currencyMenu
+
+        // 电价（极简弹窗输入）
+        let priceItem = menu.addItem(withTitle: String(format: NSLocalizedString("menu.price", value: "电价: %.2f", comment: ""), prefs.pricePerKWh), action: #selector(editPrice), keyEquivalent: "")
+        priceItem.target = self
+
+        // 校正系数子菜单
+        let corrMenu = NSMenu()
+        for factor in [1.0, 1.1, 1.2, 1.3, 1.5] {
+            let item = corrMenu.addItem(withTitle: String(format: "×%.1f", factor), action: #selector(setCorrection(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = abs(prefs.powerCorrectionFactor - factor) < 0.001 ? .on : .off
+            item.representedObject = factor
+        }
+        menu.addItem(withTitle: NSLocalizedString("menu.correction", value: "校正系数", comment: ""), action: nil, keyEquivalent: "").submenu = corrMenu
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 状态栏显示模式子菜单
+        let modeMenu = NSMenu()
+        for mode in StatusItemMode.allCases {
+            let item = modeMenu.addItem(withTitle: mode.shortLabel, action: #selector(setStatusMode(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = prefs.statusItemMode == mode ? .on : .off
+            item.representedObject = mode.rawValue
+        }
+        menu.addItem(withTitle: NSLocalizedString("menu.statusbar", value: "状态栏显示", comment: ""), action: nil, keyEquivalent: "").submenu = modeMenu
+
+        // 语言子菜单
+        let langMenu = NSMenu()
+        for lang in AppLanguage.allCases {
+            let item = langMenu.addItem(withTitle: lang.displayName, action: #selector(setLanguage(_:)), keyEquivalent: "")
+            item.target = self
+            item.state = prefs.appLanguage == lang ? .on : .off
+            item.representedObject = lang.rawValue
+        }
+        menu.addItem(withTitle: NSLocalizedString("menu.language", value: "语言", comment: ""), action: nil, keyEquivalent: "").submenu = langMenu
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 告警开关
+        let powerAlert = menu.addItem(withTitle: NSLocalizedString("menu.powerAlert", value: "功率告警", comment: ""), action: #selector(togglePowerAlert), keyEquivalent: "")
+        powerAlert.target = self
+        powerAlert.state = prefs.alertPowerEnabled ? .on : .off
+        let budgetAlert = menu.addItem(withTitle: NSLocalizedString("menu.budgetAlert", value: "日预算告警", comment: ""), action: #selector(toggleBudgetAlert), keyEquivalent: "")
+        budgetAlert.target = self
+        budgetAlert.state = prefs.alertBudgetEnabled ? .on : .off
+
+        // 开机自启
+        let launch = menu.addItem(withTitle: NSLocalizedString("settings.launchAtLogin", value: "开机自启", comment: ""), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        launch.target = self
+        launch.state = SMAppService.mainApp.status != .notRegistered ? .on : .off
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 导出 CSV
+        menu.addItem(withTitle: NSLocalizedString("settings.export", value: "导出 CSV", comment: ""), action: #selector(exportCSVFromMenu), keyEquivalent: "").target = self
+
+        // 授权（若未授权才显示）
+        if PrivilegeManager.currentStatus() == .missing {
+            menu.addItem(withTitle: NSLocalizedString("privilege.button", value: "一键授权", comment: ""), action: #selector(grantFromMenu), keyEquivalent: "").target = self
         }
 
-        // 顺序很关键：先切 regular 让窗口能进入循环，再 show，再强制置前。
-        NSApp.setActivationPolicy(.regular)
-        settingsWindow?.show()
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: NSLocalizedString("menu.quit", value: "退出 PowerCumul", comment: ""), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
-        // 激活到前台（macOS 14+ 用无参 activate，旧系统回退）。
-        if #available(macOS 14.0, *) {
-            NSApp.activate()
-        } else {
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        // orderFrontRegardless 是最强制的显示方式，确保窗口可见。
-        settingsWindow?.window?.orderFrontRegardless()
+        return menu
     }
 
-    /// 设置窗口关闭：切回 accessory（无 Dock 图标）+ 置空引用。
-    @objc private func settingsWindowClosed() {
-        NSApp.setActivationPolicy(.accessory)
-        settingsWindow = nil
+    // 菜单 action 方法
+    @objc private func setInterval(_ item: NSMenuItem) {
+        if let sec = item.representedObject as? Int { prefs.sampleIntervalSec = sec }
     }
-
-    /// 设置窗口切换语言 → 保存偏好已由 SettingsWindowController 完成，这里执行重启。
-    @objc private func languageChangeRequested() {
+    @objc private func setCurrency(_ item: NSMenuItem) {
+        if let code = item.representedObject as? String, let c = Currency(rawValue: code) { prefs.currency = c }
+    }
+    @objc private func setCorrection(_ item: NSMenuItem) {
+        if let f = item.representedObject as? Double { prefs.powerCorrectionFactor = f }
+    }
+    @objc private func setStatusMode(_ item: NSMenuItem) {
+        if let raw = item.representedObject as? Int, let mode = StatusItemMode(rawValue: raw) { prefs.statusItemMode = mode }
+    }
+    @objc private func setLanguage(_ item: NSMenuItem) {
+        guard let code = item.representedObject as? String,
+              let lang = AppLanguage(rawValue: code), lang != prefs.appLanguage else { return }
+        prefs.appLanguage = lang
         relaunch()
+    }
+    @objc private func togglePowerAlert() {
+        prefs.alertPowerEnabled.toggle()
+        if prefs.alertPowerEnabled { AlertManager.requestAuthorizationShared() }
+    }
+    @objc private func toggleBudgetAlert() {
+        prefs.alertBudgetEnabled.toggle()
+        if prefs.alertBudgetEnabled { AlertManager.requestAuthorizationShared() }
+    }
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        if service.status == .notRegistered { try? service.register() }
+        else { try? service.unregister() }
+    }
+    @objc private func exportCSVFromMenu() {
+        _ = CSVExporter.export(snapshot: store.currentSnapshot(), prefs: prefs)
+    }
+    @objc private func grantFromMenu() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = PrivilegeManager.requestPrivilege()
+            DispatchQueue.main.async { [weak self] in
+                self?.sampleOnce()
+                self?.refreshAll()
+            }
+        }
+    }
+
+    /// 电价编辑：极简弹窗（单个输入框）。
+    @objc private func editPrice() {
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString("menu.price", value: "电价", comment: "")
+        alert.informativeText = NSLocalizedString("menu.priceHint", value: "每千瓦时价格", comment: "")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: NSLocalizedString("menu.cancel", value: "取消", comment: ""))
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        input.doubleValue = prefs.pricePerKWh
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+        if alert.runModal() == .alertFirstButtonReturn {
+            let v = input.doubleValue
+            if v > 0 { prefs.pricePerKWh = v }
+        }
     }
 
     /// 重启自身：用 `open` 重新拉起 .app，再退出当前进程。

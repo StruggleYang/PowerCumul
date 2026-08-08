@@ -102,3 +102,16 @@
 "settings.alertBudget" = "Daily Budget";
 "settings.budgetAlert" = "Over";
 "settings.export" = "Export CSV";
+
+// Context menu
+"menu.interval" = "Sample Interval";
+"menu.currency" = "Currency";
+"menu.price" = "Price: %.2f";
+"menu.priceHint" = "Price per kWh";
+"menu.cancel" = "Cancel";
+"menu.correction" = "Correction";
+"menu.statusbar" = "Status Bar";
+"menu.language" = "Language";
+"menu.powerAlert" = "Power Alert";
+"menu.budgetAlert" = "Budget Alert";
+"menu.quit" = "Quit PowerCumul";

@@ -102,3 +102,16 @@
 "settings.alertBudget" = "日预算";
 "settings.budgetAlert" = "超过";
 "settings.export" = "导出 CSV";
+
+// 右键菜单
+"menu.interval" = "采样间隔";
+"menu.currency" = "货币";
+"menu.price" = "电价: %.2f";
+"menu.priceHint" = "每千瓦时价格";
+"menu.cancel" = "取消";
+"menu.correction" = "校正系数";
+"menu.statusbar" = "状态栏显示";
+"menu.language" = "语言";
+"menu.powerAlert" = "功率告警";
+"menu.budgetAlert" = "日预算告警";
+"menu.quit" = "退出 PowerCumul";
