@@ -119,3 +119,6 @@
 "menu.powerThresholdHint" = "Notify when power exceeds this (W)";
 "menu.budgetThreshold" = "Budget: %.2f";
 "menu.budgetThresholdHint" = "Notify when daily cost exceeds this";
+"panel.rightClickHint" = "💡 Right-click icon for settings";
+"statusbar.tooltip" = "Left-click: Panel
+Right-click: Settings";

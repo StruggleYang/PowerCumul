@@ -61,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.action = #selector(statusItemClicked(_:))
             // 接收右键事件，用于弹出设置菜单。
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            // 悬停提示：左键看面板、右键设置。
+            button.toolTip = NSLocalizedString("statusbar.tooltip",
+                value: "左键：查看面板\n右键：设置", comment: "")
         }
         updateStatusItemTitle()
     }

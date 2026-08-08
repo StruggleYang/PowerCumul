@@ -119,3 +119,6 @@
 "menu.powerThresholdHint" = "超过此功率(W)时通知";
 "menu.budgetThreshold" = "日预算: %.2f";
 "menu.budgetThresholdHint" = "超过此费用时通知";
+"panel.rightClickHint" = "💡 右键状态栏图标打开设置";
+"statusbar.tooltip" = "左键：查看面板
+右键：设置";

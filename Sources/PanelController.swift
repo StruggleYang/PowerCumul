@@ -28,6 +28,7 @@ final class PanelController: NSViewController {
     private let totalLabel = NSTextField(labelWithString: "")
     private let uptimeLabel = NSTextField(labelWithString: "")
     private let estimateNote = NSTextField(labelWithString: "")
+    private let rightClickHint = NSTextField(labelWithString: "")
 
     // 权限状态卡片
     private let privilegeBox = NSBox()
@@ -158,6 +159,11 @@ final class PanelController: NSViewController {
         estimateNote.font = NSFont.systemFont(ofSize: 9)
         estimateNote.textColor = .tertiaryLabelColor
         estimateNote.alignment = .center
+        rightClickHint.font = NSFont.systemFont(ofSize: 9, weight: .medium)
+        rightClickHint.textColor = .secondaryLabelColor
+        rightClickHint.alignment = .center
+        rightClickHint.stringValue = NSLocalizedString("panel.rightClickHint",
+            value: "💡 右键状态栏图标打开设置", comment: "")
 
         buildPrivilegeBox()
         configureChartRangeSelector()   // 图表时段分段控件
@@ -184,7 +190,7 @@ final class PanelController: NSViewController {
         chartBox.orientation = .vertical
         chartBox.alignment = .centerX
         chartBox.spacing = 10   // 时段切换与图表之间的间距（vbox 默认 2 太挤）
-        let footerBox = vbox([totalLabel, uptimeLabel, estimateNote])
+        let footerBox = vbox([totalLabel, uptimeLabel, estimateNote, rightClickHint])
 
         let stack = NSStackView()
         stack.orientation = .vertical
