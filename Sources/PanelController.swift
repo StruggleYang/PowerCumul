@@ -135,15 +135,17 @@ final class PanelController: NSViewController {
         let title = NSTextField(labelWithString: tr("app.title"))
         title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
 
-        powerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 26, weight: .bold)
+        powerLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 28, weight: .bold)
         powerLabel.alignment = .center
+        powerLabel.textColor = .controlAccentColor   // 突出：强调色
         detailLabel.font = NSFont.systemFont(ofSize: 10)
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.alignment = .center
 
-        todayKwhLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 20, weight: .semibold)
+        todayKwhLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 22, weight: .semibold)
         todayKwhLabel.alignment = .center
-        costLabel.font = NSFont.systemFont(ofSize: 10)
+        todayKwhLabel.textColor = .controlAccentColor  // 突出：强调色
+        costLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         costLabel.textColor = .secondaryLabelColor
         costLabel.alignment = .center
 

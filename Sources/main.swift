@@ -257,6 +257,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let budgetAlert = menu.addItem(withTitle: NSLocalizedString("menu.budgetAlert", value: "日预算告警", comment: ""), action: #selector(toggleBudgetAlert), keyEquivalent: "")
         budgetAlert.target = self
         budgetAlert.state = prefs.alertBudgetEnabled ? .on : .off
+        // 阈值编辑（弹输入框）
+        menu.addItem(withTitle: String(format: NSLocalizedString("menu.powerThreshold", value: "功率阈值: %.0fW", comment: ""), prefs.alertPowerThresholdW), action: #selector(editPowerThreshold), keyEquivalent: "").target = self
+        menu.addItem(withTitle: String(format: NSLocalizedString("menu.budgetThreshold", value: "日预算: %.2f", comment: ""), prefs.alertBudgetThreshold), action: #selector(editBudgetThreshold), keyEquivalent: "").target = self
 
         // 开机自启
         let launch = menu.addItem(withTitle: NSLocalizedString("settings.launchAtLogin", value: "开机自启", comment: ""), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
@@ -326,20 +329,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 电价编辑：极简弹窗（单个输入框）。
     @objc private func editPrice() {
+        if let v = promptNumber(title: NSLocalizedString("menu.price", value: "电价", comment: ""),
+                                hint: NSLocalizedString("menu.priceHint", value: "每千瓦时价格", comment: ""),
+                                current: prefs.pricePerKWh), v > 0 {
+            prefs.pricePerKWh = v
+        }
+    }
+
+    @objc private func editPowerThreshold() {
+        if let v = promptNumber(title: NSLocalizedString("menu.powerThreshold", value: "功率阈值", comment: ""),
+                                hint: NSLocalizedString("menu.powerThresholdHint", value: "超过此功率(W)时通知", comment: ""),
+                                current: prefs.alertPowerThresholdW), v > 0 {
+            prefs.alertPowerThresholdW = v
+        }
+    }
+
+    @objc private func editBudgetThreshold() {
+        if let v = promptNumber(title: NSLocalizedString("menu.budgetThreshold", value: "日预算", comment: ""),
+                                hint: NSLocalizedString("menu.budgetThresholdHint", value: "超过此费用时通知", comment: ""),
+                                current: prefs.alertBudgetThreshold), v > 0 {
+            prefs.alertBudgetThreshold = v
+        }
+    }
+
+    /// 通用数值输入弹窗，返回用户输入的双精度数（取消则 nil）。
+    private func promptNumber(title: String, hint: String, current: Double) -> Double? {
         let alert = NSAlert()
-        alert.messageText = NSLocalizedString("menu.price", value: "电价", comment: "")
-        alert.informativeText = NSLocalizedString("menu.priceHint", value: "每千瓦时价格", comment: "")
+        alert.messageText = title
+        alert.informativeText = hint
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: NSLocalizedString("menu.cancel", value: "取消", comment: ""))
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
-        input.doubleValue = prefs.pricePerKWh
+        input.doubleValue = current
         alert.accessoryView = input
         alert.window.initialFirstResponder = input
-        if alert.runModal() == .alertFirstButtonReturn {
-            let v = input.doubleValue
-            if v > 0 { prefs.pricePerKWh = v }
-        }
+        return alert.runModal() == .alertFirstButtonReturn ? input.doubleValue : nil
     }
 
     /// 重启自身：用 `open` 重新拉起 .app，再退出当前进程。

@@ -115,3 +115,7 @@
 "menu.powerAlert" = "功率告警";
 "menu.budgetAlert" = "日预算告警";
 "menu.quit" = "退出 PowerCumul";
+"menu.powerThreshold" = "功率阈值: %.0fW";
+"menu.powerThresholdHint" = "超过此功率(W)时通知";
+"menu.budgetThreshold" = "日预算: %.2f";
+"menu.budgetThresholdHint" = "超过此费用时通知";

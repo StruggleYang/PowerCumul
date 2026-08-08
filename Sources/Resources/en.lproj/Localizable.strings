@@ -115,3 +115,7 @@
 "menu.powerAlert" = "Power Alert";
 "menu.budgetAlert" = "Budget Alert";
 "menu.quit" = "Quit PowerCumul";
+"menu.powerThreshold" = "Power Threshold: %.0fW";
+"menu.powerThresholdHint" = "Notify when power exceeds this (W)";
+"menu.budgetThreshold" = "Budget: %.2f";
+"menu.budgetThresholdHint" = "Notify when daily cost exceeds this";

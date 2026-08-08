@@ -66,11 +66,12 @@ final class Preferences {
         }
     }
 
-    /// 状态栏显示模式。
+    /// 状态栏显示模式。默认组合（功率 + 费用）。
     var statusItemMode: StatusItemMode {
         get {
             let v = defaults.integer(forKey: Key.statusItemMode)
-            return StatusItemMode(rawValue: v) ?? .power
+            // 0 是默认值（未设置过），回退到组合模式而非 power。
+            return StatusItemMode(rawValue: v) ?? .combo
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.statusItemMode)
