@@ -114,11 +114,12 @@ final class PanelController: NSViewController {
             let df = DateFormatter()
             df.locale = Locale.current
             df.dateFormat = "MM-dd"
+            // 天桶存的就是 Wh，直接用（之前误除以 1000 导致值近乎为 0、图表看不见）。
             chartView.data = recent.map { bucket in
                 let date = parseDayKey(bucket.bucketKey) ?? Date()
-                return (label: df.string(from: date), value: bucket.wh / 1000)  // kWh
+                return (label: df.string(from: date), value: bucket.wh)
             }
-            chartView.unitLabel = tr("kWh.unit")
+            chartView.unitLabel = tr("power.unit")
         }
 
         let status = PrivilegeManager.currentStatus()
