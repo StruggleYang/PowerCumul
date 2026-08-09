@@ -122,3 +122,4 @@
 "panel.rightClickHint" = "💡 Right-click icon for settings";
 "statusbar.tooltip" = "Left-click: Panel
 Right-click: Settings";
+"menu.checkUpdate" = "Check for Updates…";

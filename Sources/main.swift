@@ -280,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: NSLocalizedString("menu.checkUpdate", value: "检查更新…", comment: ""), action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(withTitle: NSLocalizedString("menu.quit", value: "退出 PowerCumul", comment: ""), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         return menu
@@ -317,6 +318,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if service.status == .notRegistered { try? service.register() }
         else { try? service.unregister() }
     }
+    /// 检查更新：打开 GitHub Releases 页（轻量方案，不集成 Sparkle）。
+    @objc private func checkForUpdates() {
+        if let url = URL(string: "https://github.com/StruggleYang/PowerCumul/releases") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc private func exportCSVFromMenu() {
         _ = CSVExporter.export(snapshot: store.currentSnapshot(), prefs: prefs)
     }
