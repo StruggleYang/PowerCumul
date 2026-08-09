@@ -20,16 +20,17 @@ A lightweight macOS menu bar app to track cumulative power consumption of your M
 
 ## ✨ Features
 
-- **Status bar real-time display**: 5 switchable modes — Power / Cost / Energy / Power+Cost combo / Icon only
-- **Popover panel**: real-time power + CPU/GPU/ANE breakdown, today's kWh, estimated cost
+- **Status bar real-time display**: 5 switchable modes — Power / Cost / Energy / Power+Cost combo (default) / Icon only
+- **Popover panel** (left-click): real-time power + CPU/GPU/ANE breakdown, today's kWh, estimated cost
+- **Context menu** (right-click): all settings — sample interval, currency, price, correction factor, status bar mode, language, alerts, launch-at-login, export CSV, check for updates
 - **Alert notifications**: power exceeds threshold / daily cost exceeds budget (debounced, no spam)
 - **Multi-range charts**: 24H / 7D / 30D power trend, hand-drawn with Core Graphics
-- **Data export**: one-click CSV export (daily summary + hourly detail), opens in Excel/Numbers
+- **Data export**: CSV export (daily summary + hourly detail), opens in Excel/Numbers
 - **Multi-currency pricing**: 12 common currency presets (¥ $ € £ ₩ ₽ ₹ NT$ HK$ A$ C$) + custom price
-- **Full bilingual (CN/EN)**: switch language in-app (Follow System / 中文 / English), restarts to apply
+- **Full bilingual (CN/EN)**: switch language via right-click menu (Follow System / 中文 / English), restarts to apply
+- **Power correction factor**: default ×1.2 estimates wall power from SoC power (calibrate with a smart plug)
 - **Cumulative energy**: total consumption (Wh/kWh) since first run, auto-resumes after reboot
 - **In-app authorization**: one-click `powermetrics` permission setup (native password prompt), no terminal needed
-- **Configurable**: sample interval, currency, price, display mode, alert thresholds/budget, launch at login
 
 ---
 
@@ -100,7 +101,12 @@ Requires Xcode Command Line Tools (`xcode-select --install`), no full Xcode need
 open build/PowerCumul.app
 ```
 
-A ⚡ icon appears in the menu bar. On first run, opening the panel shows an orange prompt "powermetrics permission required" — click **"Grant Permission"** → a native password dialog appears → enter your login password once → done. Permanent passwordless access after that, no terminal needed.
+A ⚡ icon appears in the menu bar.
+
+- **Left-click** ⚡ → monitoring panel (real-time power, today's kWh, charts, cost)
+- **Right-click** ⚡ → settings menu (sample interval, currency, price, correction, mode, language, alerts, launch-at-login, export CSV, check for updates)
+
+On first run, opening the panel shows an orange prompt "Authorization required" — click **"Grant Access"** → a native password dialog appears → enter your login password once → done. Permanent passwordless access after that, no terminal needed. You can also grant access via right-click → "Grant Access".
 
 > Authorization happens in-app: via the standard system authorization mechanism (`do shell script ... with administrator privileges`), writing a passwordless rule for **only the `powermetrics` program** to `/etc/sudoers.d/powercumul` — no other sudo permissions are opened up.
 >
@@ -108,7 +114,7 @@ A ⚡ icon appears in the menu bar. On first run, opening the panel shows an ora
 
 ### 3. Launch at Login
 
-Check "Launch at Login" in the Settings window, registered via `SMAppService` (modern login item API, macOS 13+).
+Right-click ⚡ → "Launch at Login", registered via `SMAppService` (modern login item API, macOS 13+).
 
 ---
 
@@ -143,12 +149,11 @@ With an Apple Developer account, you can add Developer ID signing + notarization
 ```
 PowerCumul/
 ├── Sources/
-│   ├── main.swift            # AppDelegate: status bar / popover / sampling timer
+│   ├── main.swift            # AppDelegate: status bar / popover / context-menu settings / sampling timer
 │   ├── PowerSampler.swift    # powermetrics invocation + tolerant parsing (cross-macOS)
-│   ├── EnergyStore.swift     # cumulative energy + JSON persistence (hourly/daily aggregation)
-│   ├── ChartView.swift       # Core Graphics line chart (24h/7d/30d)
+│   ├── EnergyStore.swift     # cumulative energy + two-layer persistence (samples.jsonl + state.json)
+│   ├── ChartView.swift       # Core Graphics line chart (24H/7D/30D)
 │   ├── PanelController.swift # NSPopover panel layout & refresh
-│   ├── SettingsWindowController.swift # independent settings window
 │   ├── AlertManager.swift    # power/budget alerts (system notifications + debounce)
 │   ├── CSVExporter.swift     # CSV export (daily + hourly)
 │   ├── PrivilegeManager.swift# in-app authorization (native password prompt → sudoers)

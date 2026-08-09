@@ -20,16 +20,17 @@
 
 ## ✨ 功能
 
-- **状态栏实时显示**：5 种模式自由切换 —— 功率 / 费用 / 电量 / 功率+费用组合 / 仅图标
-- **弹出面板**：点开即见实时功率 + CPU/GPU/ANE 分量、今日累计 kWh、估算电费
+- **状态栏实时显示**：5 种模式自由切换 —— 功率 / 费用 / 电量 / 功率+费用组合（默认）/ 仅图标
+- **弹出面板**（左键）：实时功率 + CPU/GPU/ANE 分量、今日累计 kWh、估算电费
+- **右键菜单**（右键）：全部设置 —— 采样间隔、货币、电价、校正系数、状态栏模式、语言、告警、开机自启、导出 CSV、检查更新
 - **告警通知**：功率超过阈值 / 今日电费超过预算时弹系统通知（防抖，不刷屏）
-- **多时段图表**：24 小时 / 7 天 / 30 天功率趋势切换，Core Graphics 手绘
-- **数据导出**：一键导出 CSV（天级汇总 + 小时级明细），Excel/Numbers 直接打开
-- **多货币电价**：12 种常用货币预设（¥ $ € £ ¥₩ ₽ ₹ NT$ HK$ A$ C$）+ 自定义电价
-- **完整中英双语**：App 内一键切换语言（跟随系统/中文/English），重启即生效
+- **多时段图表**：24H / 7D / 30D 功率趋势切换，Core Graphics 手绘
+- **数据导出**：CSV 导出（天级汇总 + 小时级明细），Excel/Numbers 直接打开
+- **多货币电价**：12 种常用货币预设（¥ $ € £ ₩ ₽ ₹ NT$ HK$ A$ C$）+ 自定义电价
+- **完整中英双语**：右键菜单切换语言（跟随系统/中文/English），重启即生效
+- **功率校正系数**：默认 ×1.2 把 SoC 功耗估算成整机墙功耗（有智能插座可标定）
 - **累计用电**：自首次运行起的总用电量（Wh/kWh），断电重启后自动续算
 - **应用内授权**：一键配置 powermetrics 权限（系统原生密码框），无需碰终端
-- **可配置**：采样间隔、货币、电价、显示模式、告警阈值/预算、开机自启
 
 ---
 
@@ -100,7 +101,12 @@ macOS 软件层**无法获取整机墙功耗（wall power）**——Mac mini 没
 open build/PowerCumul.app
 ```
 
-菜单栏出现 ⚡ 图标。首次运行时，点开面板会看到橙色提示「需要 powermetrics 权限」，点击 **「一键配置权限」** 按钮 → 系统弹出原生密码框 → 输入一次开机密码 → 完成。之后永久免密，无需再碰终端。
+菜单栏出现 ⚡ 图标。
+
+- **左键** ⚡ → 监控面板（实时功率、今日电量、趋势图、电费）
+- **右键** ⚡ → 设置菜单（采样间隔、货币、电价、校正系数、状态栏模式、语言、告警、开机自启、导出 CSV、检查更新）
+
+首次运行时，点开面板会看到橙色提示「需要授权才能采样功率」，点击 **「一键授权」** 按钮 → 系统弹出原生密码框 → 输入一次开机密码 → 完成。之后永久免密，无需再碰终端。也可右键 → 「一键授权」。
 
 > 权限授权是应用内完成的：通过系统标准授权机制（`do shell script ... with administrator privileges`）把**仅 powermetrics 一个程序**的免密规则写入 `/etc/sudoers.d/powercumul`，不放开其他 sudo 权限。
 >
@@ -108,7 +114,7 @@ open build/PowerCumul.app
 
 ### 3. 开机自启
 
-面板「设置」区勾选「开机自启」，即用 `SMAppService`（macOS 13+ 现代登录项）注册。
+右键 ⚡ → 「开机自启」，即用 `SMAppService`（macOS 13+ 现代登录项）注册。
 
 ---
 
@@ -157,12 +163,11 @@ git push origin v0.02
 ```
 PowerCumul/
 ├── Sources/
-│   ├── main.swift            # AppDelegate 入口：状态栏 / 弹出面板 / 采样定时器
+│   ├── main.swift            # AppDelegate：状态栏 / 弹出面板 / 右键菜单设置 / 采样定时器
 │   ├── PowerSampler.swift    # 调用 powermetrics + 容错解析（兼容多 macOS 版本）
 │   ├── EnergyStore.swift     # 累计能量计算 + 双层持久化（samples.jsonl + state.json）
 │   ├── ChartView.swift       # Core Graphics 手绘折线图（24H/7D/30D）
 │   ├── PanelController.swift # NSPopover 主面板布局与刷新
-│   ├── SettingsWindowController.swift # 独立设置窗口（frame-based 布局）
 │   ├── AlertManager.swift    # 功率/预算告警（系统通知 + 防抖）
 │   ├── CSVExporter.swift     # 数据导出 CSV（天级+小时级）
 │   ├── PrivilegeManager.swift# 应用内一键授权（原生密码框写 sudoers）
