@@ -13,7 +13,7 @@
 "kWh.unit" = "kWh";
 
 // 费用与电价
-"cost.label" = "约 %@ %@/kWh";
+"cost.label" = "累计 %@ (%@/kWh)";
 "cost.estimated" = "估算";
 
 // 货币单位（每 kWh）

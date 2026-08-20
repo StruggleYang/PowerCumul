@@ -77,9 +77,11 @@ final class PanelController: NSViewController {
 
         todayKwhLabel.stringValue = "\(L10n.decimal(snapshot.todayWh / 1000, fractionDigits: 3)) \(tr("kWh.unit"))"
 
-        let cost = snapshot.todayWh / 1000 * prefs.pricePerKWh
-        costLabel.stringValue = L10n.tr("cost.label", "约 %@ %@/kWh",
-                                        L10n.cost(cost, currency: prefs.currency),
+        // 费用展示累计电费（自首次运行起）：今日费用在空闲量级下只有几分钱，
+        // 2 位小数下恒为 0.00，没有信息量。累计 + 3 位小数能看出增长。
+        let cost = snapshot.totalWh / 1000 * prefs.pricePerKWh
+        costLabel.stringValue = L10n.tr("cost.label", "累计 %@ %@/kWh",
+                                        L10n.cumulativeCost(cost, currency: prefs.currency),
                                         L10n.decimal(prefs.pricePerKWh, fractionDigits: 2))
 
         let df = DateFormatter()

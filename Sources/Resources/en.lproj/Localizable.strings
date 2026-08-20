@@ -13,7 +13,7 @@
 "kWh.unit" = "kWh";
 
 // Cost & price
-"cost.label" = "≈ %@ %@/kWh";
+"cost.label" = "Total %@ (%@/kWh)";
 "cost.estimated" = "est.";
 
 // Currency units (per kWh)

@@ -86,17 +86,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let snap = store.currentSnapshot()
         let w = (lastSample?.totalMW ?? snap.currentMW) / 1000
         let kwh = snap.todayWh / 1000
-        let cost = kwh * prefs.pricePerKWh
+        // 费用展示累计电费：今日费用空闲量级下仅几分钱，2 位小数恒为 0.00。
+        let cost = snap.totalWh / 1000 * prefs.pricePerKWh
         let unit = tr("power.unit")
 
         switch prefs.statusItemMode {
         case .cost:
-            button.title = " \(prefs.currency.symbol)\(L10n.decimal(cost, fractionDigits: 2))"
+            button.title = " \(L10n.cumulativeCost(cost, currency: prefs.currency))"
         case .kwh:
             button.title = " \(L10n.decimal(kwh, fractionDigits: 3))\(tr("kWh.unit"))"
         case .combo:
             button.title = " \(L10n.decimal(w, fractionDigits: 1))\(unit) · "
-                + "\(prefs.currency.symbol)\(L10n.decimal(cost, fractionDigits: 2))"
+                + "\(L10n.cumulativeCost(cost, currency: prefs.currency))"
         case .iconOnly:
             button.title = ""
         case .power:

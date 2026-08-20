@@ -71,4 +71,10 @@ enum L10n {
     static func cost(_ amount: Double, currency: Currency) -> String {
         "\(currency.symbol)\(decimal(amount, fractionDigits: 2))"
     }
+
+    /// 格式化累计费用：符号 + 金额（3 位小数——空闲量级下日电费仅几分钱，
+    /// 2 位小数会恒显示 0.00，3 位才能看出增长）。
+    static func cumulativeCost(_ amount: Double, currency: Currency) -> String {
+        "\(currency.symbol)\(decimal(amount, fractionDigits: 3))"
+    }
 }
