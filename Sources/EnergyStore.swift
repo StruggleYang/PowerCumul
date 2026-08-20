@@ -80,29 +80,43 @@ final class EnergyStore {
 
     // MARK: - 写入
 
-    /// 提交一次新采样：①追加一行到 samples.jsonl ②更新聚合状态并写 state.json。
+    /// 缺口上限：dt 超过此值视为睡眠/中断，能量记 0（睡眠时 SoC 本就近 0，
+    /// 按唤醒后功率全记反而高估）。90s 覆盖最长采样间隔(60s)及看门狗重启。
+    private static let gapLimit: TimeInterval = 90
+
+    /// 流式采样节流：原始流与聚合落盘都按时间节流（聚合内存中仍是逐样本累加的）。
+    private var lastRawAppend = Date.distantPast
+    private var lastPersistAt = Date.distantPast
+
+    /// 提交一次新采样：内存聚合逐样本累加；落盘按时间节流。
     @discardableResult
     func add(sample: PowerSample) -> Snapshot {
         queue.sync {
             let now = sample.timestamp
             let dt = now.timeIntervalSince(state.lastSampleDate)
 
-            // 仅当时间差合理（0 < dt < 1 小时）才累加，避免睡眠唤醒后大跳变。
             var deltaWh: Double = 0
-            if dt > 0 && dt < 3600 {
+            if dt > 0 && dt <= Self.gapLimit {
                 deltaWh = sample.totalMW * dt / 3600.0 / 1000.0
                 state.totalWh += deltaWh
                 state.todayWh += deltaWh
                 rollIntoHours(wh: deltaWh, at: now)
             }
+            // dt > gapLimit（睡眠/长时间中断）：能量记 0，仅推进时间戳。
 
             state.lastSampleDate = now
             state.lastTotalMW = sample.totalMW
 
-            // ① 追加原始采样（独立于聚合写入，互不影响）。
-            appendRaw(sample: sample)
-            // ② 写聚合状态（原子重写，文件小）。
-            persistState()
+            // 落盘节流：1Hz 流式下若逐样本写盘，state.json 每天被全量重写 8.6 万次。
+            // 聚合在内存中始终精确，落盘每 5s 一次；原始流同样每 5s 存一个点。
+            if now.timeIntervalSince(lastRawAppend) >= 5 {
+                appendRaw(sample: sample)
+                lastRawAppend = now
+            }
+            if now.timeIntervalSince(lastPersistAt) >= 5 {
+                persistState()
+                lastPersistAt = now
+            }
             return snapshot()
         }
     }

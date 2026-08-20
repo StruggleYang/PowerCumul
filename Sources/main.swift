@@ -38,9 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let prefs = Preferences()
     private let store = EnergyStore()
     private lazy var alertManager = AlertManager(prefs: prefs, store: store)
-    private var timer: DispatchSourceTimer?
+    private var streamer: PowerStreamer?
     private var lastSample: PowerSample?
-    private var missedFirstSample = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildStatusItem()
@@ -135,37 +134,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - 采样循环
 
     private func startSampling() {
-        // 立即采一次首样。
-        sampleOnce()
-        scheduleNext()
+        // 权限未授予时不启动（授权成功后由 privilegeGranted 通知拉起）。
+        guard PrivilegeManager.currentStatus() == .granted else { return }
+        startStreamer()
     }
 
-    private func scheduleNext() {
-        timer?.cancel()
-        let t = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        let interval = max(1, prefs.sampleIntervalSec)
-        t.schedule(deadline: .now() + .seconds(interval), repeating: .seconds(interval))
-        t.setEventHandler { [weak self] in
-            self?.sampleOnce()
+    /// 启动连续流式采样：powermetrics 常驻进程逐块回调，100% 时间覆盖。
+    private func startStreamer() {
+        guard streamer == nil else { return }   // 已在运行
+        let s = PowerStreamer(intervalMs: max(1, prefs.sampleIntervalSec) * 1000)
+        s.onSample = { [weak self] sample in
+            self?.handleStreamSample(sample)
         }
-        t.resume()
-        timer = t
+        streamer = s
+        s.start()
     }
 
-    private func sampleOnce() {
-        guard let sample = PowerSampler.sample() else {
-            // 采样失败（多半是 sudo 免密未配）。仅在面板打开时刷新提示。
-            DispatchQueue.main.async { [weak self] in
-                self?.refreshAll()
-            }
-            return
-        }
-        // 应用功率校正系数：把 SoC 功耗估算成整机墙功耗。
-        // 系数默认 1.0（无校正），用户可在设置里用智能插座标定（通常 1.1~1.4）。
+    /// 流式采样回调（后台线程）：校正 → 累计 → 告警 → 刷 UI。
+    private func handleStreamSample(_ sample: PowerSample) {
+        // 应用功率校正系数：把 SoC 功耗估算成整机墙功耗（默认 ×1.2，可标定）。
         let corrected = sample.applying(correctionFactor: prefs.powerCorrectionFactor)
         lastSample = corrected
         store.add(sample: corrected)
-        // 告警评估用校正后的功率（告警阈值按墙功耗理解更直观）。
         alertManager.evaluate(currentW: corrected.totalMW / 1000, sample: corrected)
         DispatchQueue.main.async { [weak self] in
             self?.updateStatusItemTitle()
@@ -333,7 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             _ = PrivilegeManager.requestPrivilege()
             DispatchQueue.main.async { [weak self] in
-                self?.sampleOnce()
+                self?.startStreamer()
                 self?.refreshAll()
             }
         }
@@ -391,19 +381,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 面板内一键授权成功后，立即开始采样（首次授权场景）。
+    /// 面板内一键授权成功后，立即开始流式采样（首次授权场景）。
     @objc private func privilegeGranted() {
         DispatchQueue.main.async { [weak self] in
-            self?.sampleOnce()
+            self?.startStreamer()
             self?.refreshAll()
         }
     }
 
     @objc private func prefsChanged() {
-        // 间隔变化需重建定时器。
+        // 采样间隔变化 → 用新间隔重启流。
         DispatchQueue.main.async { [weak self] in
-            self?.updateStatusItemTitle()
-            self?.scheduleNext()
+            guard let self = self else { return }
+            self.updateStatusItemTitle()
+            self.streamer?.restart(intervalMs: max(1, self.prefs.sampleIntervalSec) * 1000)
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // 退出前终止常驻 powermetrics，避免遗留孤儿进程。
+        streamer?.stop()
     }
 }

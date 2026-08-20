@@ -82,9 +82,11 @@ enum PowerSampler {
         let dram = firstMW(text, containing: "DRAM Power") ?? firstMW(text, containing: "DCS Power")
 
         // 1) 新版 macOS (Sonoma+): Combined Power (CPU + GPU + ANE): <n> mW
+        //    注意 Combined 不含 DRAM，空闲时 CPU/GPU/ANE 都趋近 0 而内存仍在耗电，
+        //    把 DRAM Power 计入总量，空闲段才不至于整段记 0。
         if let combined = firstMW(text, containing: "Combined Power") {
             return PowerSample(timestamp: Date(),
-                               totalMW: combined,
+                               totalMW: combined + (dram ?? 0),
                                cpuMW: cpu ?? 0,
                                gpuMW: gpu ?? 0,
                                aneMW: ane ?? 0,
