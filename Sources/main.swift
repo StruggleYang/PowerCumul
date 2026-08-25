@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastSample: PowerSample?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Updater.cleanupOldBundle()   // 清理上次更新遗留的旧包
         buildStatusItem()
         buildPopover()
         startSampling()
@@ -309,11 +310,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if service.status == .notRegistered { try? service.register() }
         else { try? service.unregister() }
     }
-    /// 检查更新：打开 GitHub Releases 页（轻量方案，不集成 Sparkle）。
+    /// 检查更新：拉 GitHub Releases 最新版比对，新版本则应用内下载换装重启。
     @objc private func checkForUpdates() {
-        if let url = URL(string: "https://github.com/StruggleYang/PowerCumul/releases") {
-            NSWorkspace.shared.open(url)
+        let checking = NSAlert()
+        checking.messageText = NSLocalizedString("update.checking", value: "正在检查更新…", comment: "")
+        checking.alertStyle = .informational
+        // 非阻塞提示：短延迟后自动关（结果对话框随后弹出）。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { checking.window.orderOut(nil) }
+
+        Updater.fetchLatest { [weak self] rel in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard let rel = rel else {
+                    self.updateAlert(text: NSLocalizedString("update.fetchFail", value: "检查更新失败（网络错误）", comment: ""))
+                    return
+                }
+                let cur = Updater.currentVersion()
+                if !Updater.isNewer(rel.version, than: cur) {
+                    self.updateAlert(text: String(format: NSLocalizedString("update.upToDate", value: "已是最新版本 %@", comment: ""), cur))
+                    return
+                }
+                // 有新版本：确认后安装。
+                let a = NSAlert()
+                a.messageText = String(format: NSLocalizedString("update.found", value: "发现新版本 v%@", comment: ""), rel.version)
+                a.informativeText = String(rel.notes.prefix(400))
+                a.alertStyle = .informational
+                a.addButton(withTitle: NSLocalizedString("update.install", value: "下载并安装", comment: ""))
+                a.addButton(withTitle: NSLocalizedString("menu.cancel", value: "取消", comment: ""))
+                guard a.runModal() == .alertFirstButtonReturn else { return }
+
+                // 后台下载安装（同步等待 + 换装重启）。
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let err = Updater.downloadAndInstall(rel)
+                    if let err = err {
+                        DispatchQueue.main.async {
+                            self.updateAlert(text: String(format: NSLocalizedString("update.installFail", value: "更新失败：%@", comment: ""), err))
+                        }
+                    }
+                    // 成功路径：downloadAndInstall 内部已触发重启，无需处理。
+                }
+            }
         }
+    }
+
+    private func updateAlert(text: String) {
+        let a = NSAlert()
+        a.messageText = text
+        a.alertStyle = .informational
+        a.runModal()
     }
 
     @objc private func exportCSVFromMenu() {

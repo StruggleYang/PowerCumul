@@ -123,3 +123,11 @@
 "statusbar.tooltip" = "左键：查看面板
 右键：设置";
 "menu.checkUpdate" = "检查更新…";
+
+// 应用内更新
+"update.checking" = "正在检查更新…";
+"update.fetchFail" = "检查更新失败（网络错误）";
+"update.upToDate" = "已是最新版本 %@";
+"update.found" = "发现新版本 v%@";
+"update.install" = "下载并安装";
+"update.installFail" = "更新失败：%@";

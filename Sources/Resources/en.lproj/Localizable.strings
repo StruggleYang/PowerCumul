@@ -123,3 +123,11 @@
 "statusbar.tooltip" = "Left-click: Panel
 Right-click: Settings";
 "menu.checkUpdate" = "Check for Updates…";
+
+// In-app update
+"update.checking" = "Checking for updates…";
+"update.fetchFail" = "Update check failed (network error)";
+"update.upToDate" = "You're up to date (%@)";
+"update.found" = "New version v%@ available";
+"update.install" = "Download & Install";
+"update.installFail" = "Update failed: %@";
