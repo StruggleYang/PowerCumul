@@ -73,11 +73,10 @@ final class PowerStreamer {
                        "-i", String(intervalMs),
                        "--samplers", "cpu_power,gpu_power"]
         let stdout = Pipe()
-        let stderr = Pipe()
         p.standardOutput = stdout
-        p.standardError = stderr
-        // 持续排空 stderr（丢弃内容），防止缓冲写满阻塞子进程。
-        stderr.fileHandleForReading.readabilityHandler = { _ in }
+        // stderr 直接接 /dev/null：不消费数据的 readabilityHandler 会因
+        // 数据滞留持续触发而空转烧满一个核（v0.03 的 98% CPU bug 根因）。
+        p.standardError = FileHandle.nullDevice
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let chunk = handle.availableData
             guard !chunk.isEmpty else {
