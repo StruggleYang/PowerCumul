@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = EnergyStore()
     private lazy var alertManager = AlertManager(prefs: prefs, store: store)
     private var streamer: PowerStreamer?
+    private let netMonitor = NetMonitor()
+    private var netTimer: Timer?
     private var lastSample: PowerSample?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -46,7 +48,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildStatusItem()
         buildPopover()
         startSampling()
+        startNetMonitor()
         observePrefs()
+    }
+
+    /// 网速轮询：2s 一次（计数器差值需要自己的节拍，与功率流独立）。
+    private func startNetMonitor() {
+        netMonitor.poll()   // 建立基线
+        let t = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            self?.netMonitor.poll()
+            // 仅网速模式需要随轮询刷新标题（其他模式随功率采样刷新）。
+            if self?.prefs.statusItemMode == .net {
+                self?.updateStatusItemTitle()
+            }
+        }
+        t.tolerance = 0.5   // 允许系统合并定时器唤醒，省电
+        netTimer = t
     }
 
     // MARK: - 状态栏
@@ -102,6 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.title = ""
         case .power:
             button.title = " \(L10n.decimal(w, fractionDigits: 1))\(unit)"
+        case .net:
+            button.title = " ↑\(NetMonitor.format(netMonitor.upBytesPerSec)) ↓\(NetMonitor.format(netMonitor.downBytesPerSec))"
         }
     }
 

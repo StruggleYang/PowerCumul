@@ -131,3 +131,4 @@ Right-click: Settings";
 "update.found" = "New version v%@ available";
 "update.install" = "Download & Install";
 "update.installFail" = "Update failed: %@";
+"mode.net" = "Net";

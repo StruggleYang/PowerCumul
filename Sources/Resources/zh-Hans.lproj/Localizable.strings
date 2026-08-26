@@ -131,3 +131,4 @@
 "update.found" = "发现新版本 v%@";
 "update.install" = "下载并安装";
 "update.installFail" = "更新失败：%@";
+"mode.net" = "网速";

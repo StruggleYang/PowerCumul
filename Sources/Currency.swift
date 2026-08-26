@@ -71,6 +71,7 @@ enum StatusItemMode: Int, CaseIterable {
     case kwh = 2         // 仅电量
     case combo = 3       // 功率 + 费用（紧凑组合）
     case iconOnly = 4    // 仅图标
+    case net = 5         // 网速（↑上传 ↓下载）
 
     /// 用于设置区分段控件的标签（本地化）。
     var shortLabel: String {
@@ -80,6 +81,7 @@ enum StatusItemMode: Int, CaseIterable {
         case .kwh:      return NSLocalizedString("mode.kwh", value: "电量", comment: "状态栏模式：电量")
         case .combo:    return NSLocalizedString("mode.combo", value: "组合", comment: "状态栏模式：组合")
         case .iconOnly: return NSLocalizedString("mode.iconOnly", value: "图标", comment: "状态栏模式：仅图标")
+        case .net:      return NSLocalizedString("mode.net", value: "网速", comment: "状态栏模式：网速")
         }
     }
 }

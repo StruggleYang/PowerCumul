@@ -20,7 +20,7 @@ A lightweight macOS menu bar app to track cumulative power consumption of your M
 
 ## ✨ Features
 
-- **Status bar real-time display**: 5 switchable modes — Power / Cost / Energy / Power+Cost combo (default) / Icon only
+- **Status bar real-time display**: 6 switchable modes — Power / Cost / Energy / Power+Cost combo (default) / Icon / Net speed
 - **Popover panel** (left-click): real-time power + CPU/GPU/ANE breakdown, today's kWh, estimated cost
 - **Context menu** (right-click): all settings — sample interval, currency, price, correction factor, status bar mode, language, alerts, launch-at-login, export CSV, check for updates
 - **In-app updates**: Check for Updates pulls the latest GitHub Release, downloads, installs in place, and relaunches — no browser, no manual download (with a rate-limit-free fallback channel)
