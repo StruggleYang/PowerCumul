@@ -32,8 +32,6 @@
 "mode.power" = "Power";
 "mode.cost" = "Cost";
 "mode.kwh" = "Energy";
-"mode.combo" = "Combo";
-"mode.iconOnly" = "Icon";
 
 // Footer totals
 "footer.total" = "Total %@ kWh (since %@)";
@@ -132,3 +130,4 @@ Right-click: Settings";
 "update.install" = "Download & Install";
 "update.installFail" = "Update failed: %@";
 "mode.net" = "Net";
+"menu.iconOnly" = "Icon Only";

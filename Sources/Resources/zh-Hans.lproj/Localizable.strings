@@ -32,8 +32,6 @@
 "mode.power" = "功率";
 "mode.cost" = "费用";
 "mode.kwh" = "电量";
-"mode.combo" = "组合";
-"mode.iconOnly" = "图标";
 
 // 底部累计信息
 "footer.total" = "累计 %@ kWh（自 %@）";
@@ -132,3 +130,4 @@
 "update.install" = "下载并安装";
 "update.installFail" = "更新失败：%@";
 "mode.net" = "网速";
+"menu.iconOnly" = "仅图标";

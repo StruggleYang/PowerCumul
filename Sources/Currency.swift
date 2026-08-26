@@ -64,24 +64,26 @@ enum Currency: String, CaseIterable {
     }
 }
 
-/// 状态栏显示模式。
-enum StatusItemMode: Int, CaseIterable {
-    case power = 0       // 仅功率
-    case cost = 1        // 仅费用
-    case kwh = 2         // 仅电量
-    case combo = 3       // 功率 + 费用（紧凑组合）
-    case iconOnly = 4    // 仅图标
-    case net = 5         // 网速（↑上传 ↓下载）
+/// 状态栏显示组件（位掩码，可自由组合勾选）。
+/// 取代旧的互斥「模式」：想看什么勾什么，全不勾 = 仅图标。
+struct StatusComponent: OptionSet {
+    let rawValue: Int
 
-    /// 用于设置区分段控件的标签（本地化）。
-    var shortLabel: String {
+    static let power = StatusComponent(rawValue: 1 << 0)   // 实时功率
+    static let cost  = StatusComponent(rawValue: 1 << 1)   // 累计电费
+    static let kwh   = StatusComponent(rawValue: 1 << 2)   // 累计电量
+    static let net   = StatusComponent(rawValue: 1 << 3)   // 网速
+
+    /// 菜单展示顺序与标签（本地化）。
+    static var all: [StatusComponent] { [.power, .cost, .kwh, .net] }
+
+    var label: String {
         switch self {
-        case .power:    return NSLocalizedString("mode.power", value: "功率", comment: "状态栏模式：功率")
-        case .cost:     return NSLocalizedString("mode.cost", value: "费用", comment: "状态栏模式：费用")
-        case .kwh:      return NSLocalizedString("mode.kwh", value: "电量", comment: "状态栏模式：电量")
-        case .combo:    return NSLocalizedString("mode.combo", value: "组合", comment: "状态栏模式：组合")
-        case .iconOnly: return NSLocalizedString("mode.iconOnly", value: "图标", comment: "状态栏模式：仅图标")
-        case .net:      return NSLocalizedString("mode.net", value: "网速", comment: "状态栏模式：网速")
+        case .power: return NSLocalizedString("mode.power", value: "功率", comment: "状态栏组件：功率")
+        case .cost:  return NSLocalizedString("mode.cost", value: "费用", comment: "状态栏组件：费用")
+        case .kwh:   return NSLocalizedString("mode.kwh", value: "电量", comment: "状态栏组件：电量")
+        case .net:   return NSLocalizedString("mode.net", value: "网速", comment: "状态栏组件：网速")
+        default:     return ""
         }
     }
 }

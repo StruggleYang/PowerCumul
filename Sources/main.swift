@@ -57,8 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         netMonitor.poll()   // 建立基线
         let t = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.netMonitor.poll()
-            // 仅网速模式需要随轮询刷新标题（其他模式随功率采样刷新）。
-            if self?.prefs.statusItemMode == .net {
+            // 勾了网速组件才需要随轮询刷新标题（其余组件随功率采样刷新）。
+            if self?.prefs.statusComponents.contains(.net) == true {
                 self?.updateStatusItemTitle()
             }
         }
@@ -97,31 +97,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 刷新状态栏文字（功率/费用/电量/组合/仅图标，由偏好决定）。
+    /// 刷新状态栏文字：按勾选组件拼接（功率/费用/电量/网速），全不勾 = 仅图标。
     private func updateStatusItemTitle() {
         guard let button = statusItem?.button else { return }
         let snap = store.currentSnapshot()
-        let w = (lastSample?.totalMW ?? snap.currentMW) / 1000
-        let kwh = snap.todayWh / 1000
-        // 费用展示累计电费：今日费用空闲量级下仅几分钱，2 位小数恒为 0.00。
-        let cost = snap.totalWh / 1000 * prefs.pricePerKWh
-        let unit = tr("power.unit")
+        let comps = prefs.statusComponents
+        guard !comps.isEmpty else { button.title = ""; return }
 
-        switch prefs.statusItemMode {
-        case .cost:
-            button.title = " \(L10n.cumulativeCost(cost, currency: prefs.currency))"
-        case .kwh:
-            button.title = " \(L10n.decimal(kwh, fractionDigits: 3))\(tr("kWh.unit"))"
-        case .combo:
-            button.title = " \(L10n.decimal(w, fractionDigits: 1))\(unit) · "
-                + "\(L10n.cumulativeCost(cost, currency: prefs.currency))"
-        case .iconOnly:
-            button.title = ""
-        case .power:
-            button.title = " \(L10n.decimal(w, fractionDigits: 1))\(unit)"
-        case .net:
-            button.title = " ↑\(NetMonitor.format(netMonitor.upBytesPerSec)) ↓\(NetMonitor.format(netMonitor.downBytesPerSec))"
+        let w = (lastSample?.totalMW ?? snap.currentMW) / 1000
+        // 电量/费用均展示累计（语义一致；今日电费空闲量级下恒为 0.00 无信息量）。
+        let kwh = snap.totalWh / 1000
+        let cost = kwh * prefs.pricePerKWh
+
+        var parts: [String] = []
+        if comps.contains(.power) {
+            parts.append("\(L10n.decimal(w, fractionDigits: 1))\(tr("power.unit"))")
         }
+        if comps.contains(.cost) {
+            parts.append(L10n.cumulativeCost(cost, currency: prefs.currency))
+        }
+        if comps.contains(.kwh) {
+            parts.append("\(L10n.decimal(kwh, fractionDigits: 3))\(tr("kWh.unit"))")
+        }
+        if comps.contains(.net) {
+            parts.append("↑\(NetMonitor.format(netMonitor.upBytesPerSec)) ↓\(NetMonitor.format(netMonitor.downBytesPerSec))")
+        }
+        button.title = " " + parts.joined(separator: " · ")
     }
 
     private func tr(_ key: String) -> String {
@@ -244,12 +245,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 状态栏显示模式子菜单
         let modeMenu = NSMenu()
-        for mode in StatusItemMode.allCases {
-            let item = modeMenu.addItem(withTitle: mode.shortLabel, action: #selector(setStatusMode(_:)), keyEquivalent: "")
+        // 组件开关：勾选组合，全不勾 = 仅图标。
+        for comp in StatusComponent.all {
+            let item = modeMenu.addItem(withTitle: comp.label, action: #selector(toggleStatusComponent(_:)), keyEquivalent: "")
             item.target = self
-            item.state = prefs.statusItemMode == mode ? .on : .off
-            item.representedObject = mode.rawValue
+            item.state = prefs.statusComponents.contains(comp) ? .on : .off
+            item.representedObject = comp.rawValue
         }
+        modeMenu.addItem(NSMenuItem.separator())
+        let iconOnly = modeMenu.addItem(withTitle: NSLocalizedString("menu.iconOnly", value: "仅图标", comment: ""), action: #selector(iconOnlyStatus), keyEquivalent: "")
+        iconOnly.target = self
+        iconOnly.state = prefs.statusComponents.isEmpty ? .on : .off
         menu.addItem(withTitle: NSLocalizedString("menu.statusbar", value: "状态栏显示", comment: ""), action: nil, keyEquivalent: "").submenu = modeMenu
 
         // 语言子菜单
@@ -307,8 +313,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func setCorrection(_ item: NSMenuItem) {
         if let f = item.representedObject as? Double { prefs.powerCorrectionFactor = f }
     }
-    @objc private func setStatusMode(_ item: NSMenuItem) {
-        if let raw = item.representedObject as? Int, let mode = StatusItemMode(rawValue: raw) { prefs.statusItemMode = mode }
+    @objc private func toggleStatusComponent(_ item: NSMenuItem) {
+        guard let raw = item.representedObject as? Int else { return }
+        var comps = prefs.statusComponents
+        let comp = StatusComponent(rawValue: raw)
+        if comps.contains(comp) { comps.remove(comp) } else { comps.insert(comp) }
+        prefs.statusComponents = comps
+    }
+
+    @objc private func iconOnlyStatus() {
+        prefs.statusComponents = []
     }
     @objc private func setLanguage(_ item: NSMenuItem) {
         guard let code = item.representedObject as? String,

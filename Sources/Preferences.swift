@@ -14,7 +14,8 @@ final class Preferences {
         static let interval = "sampleIntervalSec"
         static let price = "pricePerKWh"
         static let currency = "currencyCode"
-        static let statusItemMode = "statusItemMode"
+        static let statusItemMode = "statusItemMode"   // 旧版互斥模式（迁移用）
+        static let statusComponents = "statusComponents"
         static let appLanguage = "appLanguage"
         static let alertPowerOn = "alertPowerEnabled"
         static let alertPowerThreshold = "alertPowerThresholdW"
@@ -66,15 +67,32 @@ final class Preferences {
         }
     }
 
-    /// 状态栏显示模式。默认组合（功率 + 费用）。
-    var statusItemMode: StatusItemMode {
+    /// 状态栏显示组件（位掩码）。默认 功率+费用。
+    /// 兼容旧版互斥模式（statusItemMode 0-5），首次读取时自动迁移。
+    var statusComponents: StatusComponent {
         get {
-            let v = defaults.integer(forKey: Key.statusItemMode)
-            // 0 是默认值（未设置过），回退到组合模式而非 power。
-            return StatusItemMode(rawValue: v) ?? .combo
+            if defaults.object(forKey: Key.statusComponents) != nil {
+                return StatusComponent(rawValue: defaults.integer(forKey: Key.statusComponents))
+            }
+            // 旧偏好迁移：互斥模式 → 组件组合。
+            guard defaults.object(forKey: Key.statusItemMode) != nil else {
+                return [.power, .cost]   // 从未设置过 → 默认
+            }
+            let migrated: StatusComponent
+            switch defaults.integer(forKey: Key.statusItemMode) {
+            case 0: migrated = .power            // 功率
+            case 1: migrated = .cost             // 费用
+            case 2: migrated = .kwh              // 电量
+            case 3: migrated = [.power, .cost]   // 组合
+            case 4: migrated = []                // 仅图标
+            case 5: migrated = .net              // 网速
+            default: migrated = [.power, .cost]
+            }
+            defaults.set(migrated.rawValue, forKey: Key.statusComponents)
+            return migrated
         }
         set {
-            defaults.set(newValue.rawValue, forKey: Key.statusItemMode)
+            defaults.set(newValue.rawValue, forKey: Key.statusComponents)
             defaults.synchronize()
             NotificationCenter.default.post(name: .prefsChanged, object: nil)
         }
