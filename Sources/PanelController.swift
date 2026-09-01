@@ -24,6 +24,13 @@ final class PanelController: NSViewController {
     // 图表
     private let chartView = ChartView()
 
+    // 耗电应用 TOP 区块（区间与图表共用分段控件）
+    private let topAppsHeader = NSTextField(labelWithString: "")
+    private let topAppsNote = NSTextField(labelWithString: "")
+    private let topAppsEmptyLabel = NSTextField(labelWithString: "")
+    private var topAppRows: [TopAppRowView] = []
+    private weak var processStoreRef: ProcessEnergyStore?
+
     // 底部
     private let totalLabel = NSTextField(labelWithString: "")
     private let uptimeLabel = NSTextField(labelWithString: "")
@@ -49,7 +56,7 @@ final class PanelController: NSViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 420))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 580))
         buildUI(in: container)
         self.view = container
     }
@@ -130,6 +137,48 @@ final class PanelController: NSViewController {
         if status == .missing {
             privilegeLabel.stringValue = tr("privilege.warning")
         }
+
+        refreshTopApps(snapshot: snapshot)
+    }
+
+    // MARK: - 耗电应用 TOP
+
+    /// 按当前图表区间聚合进程能耗：5 个应用 + "其他"长尾行。
+    /// 归因口径：app 能耗分占比 × 区间实测总 Wh（Energy Impact 为加权代理分，Wh 是估算值）。
+    private func refreshTopApps(snapshot: Snapshot) {
+        guard let ps = processStoreRef else { return }
+
+        let count: Int
+        let totalWh: Double
+        let tops: [ProcessEnergyStore.TopApp]
+        switch prefs.chartRange {
+        case .hours24:
+            let recent = snapshot.hours.suffix(24)
+            totalWh = recent.reduce(0) { $0 + $1.wh }
+            tops = ps.topApps(lastHours: 24, totalWh: totalWh)
+        case .days7, .days30:
+            count = prefs.chartRange == .days7 ? 7 : 30
+            let recent = snapshot.days.suffix(count)
+            totalWh = recent.reduce(0) { $0 + $1.wh }
+            tops = ps.topApps(lastDays: count, totalWh: totalWh)
+        }
+        let other = ps.otherShare(of: tops)
+
+        // 前 5 行是应用，第 6 行是"其他"（长尾占比太小则隐藏）。
+        for (i, row) in topAppRows.enumerated() {
+            if i < tops.count {
+                row.isHidden = false
+                row.configure(rank: i + 1, name: tops[i].name,
+                               share: tops[i].share, wh: tops[i].attributedWh)
+            } else if i == topAppRows.count - 1, other > 0.005, !tops.isEmpty {
+                row.isHidden = false
+                row.configure(rank: nil, name: tr("topapps.other"),
+                              share: other, wh: other * totalWh)
+            } else {
+                row.isHidden = true
+            }
+        }
+        topAppsEmptyLabel.isHidden = !tops.isEmpty
     }
 
     // MARK: - UI 构建
@@ -192,6 +241,47 @@ final class PanelController: NSViewController {
         chartBox.orientation = .vertical
         chartBox.alignment = .centerX
         chartBox.spacing = 10   // 时段切换与图表之间的间距（vbox 默认 2 太挤）
+
+        // 耗电应用 TOP 区块：标题行 + 6 个条形行（5 应用 + 其他）+ 空态文案。
+        topAppsHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        topAppsHeader.textColor = .secondaryLabelColor
+        topAppsHeader.stringValue = tr("topapps.title")
+        topAppsNote.font = NSFont.systemFont(ofSize: 9)
+        topAppsNote.textColor = .tertiaryLabelColor
+        topAppsNote.stringValue = tr("topapps.note")
+        let topAppsHeaderRow = NSView()
+        topAppsHeader.translatesAutoresizingMaskIntoConstraints = false
+        topAppsNote.translatesAutoresizingMaskIntoConstraints = false
+        topAppsHeaderRow.addSubview(topAppsHeader)
+        topAppsHeaderRow.addSubview(topAppsNote)
+        NSLayoutConstraint.activate([
+            topAppsHeader.leadingAnchor.constraint(equalTo: topAppsHeaderRow.leadingAnchor),
+            topAppsHeader.topAnchor.constraint(equalTo: topAppsHeaderRow.topAnchor),
+            topAppsHeader.bottomAnchor.constraint(equalTo: topAppsHeaderRow.bottomAnchor),
+            topAppsNote.trailingAnchor.constraint(equalTo: topAppsHeaderRow.trailingAnchor),
+            topAppsNote.centerYAnchor.constraint(equalTo: topAppsHeaderRow.centerYAnchor),
+            topAppsNote.leadingAnchor.constraint(greaterThanOrEqualTo: topAppsHeader.trailingAnchor, constant: 8),
+        ])
+
+        topAppsEmptyLabel.font = NSFont.systemFont(ofSize: 10)
+        topAppsEmptyLabel.textColor = .tertiaryLabelColor
+        topAppsEmptyLabel.stringValue = tr("topapps.empty")
+
+        for _ in 0..<6 {
+            let row = TopAppRowView(frame: .zero)
+            row.isHidden = true
+            topAppRows.append(row)
+        }
+        let topAppsBox = NSStackView(views: [topAppsHeaderRow] + topAppRows + [topAppsEmptyLabel])
+        topAppsBox.orientation = .vertical
+        topAppsBox.alignment = .leading
+        topAppsBox.spacing = 2
+        for row in topAppRows {
+            row.heightAnchor.constraint(equalToConstant: 22).isActive = true
+            row.leadingAnchor.constraint(equalTo: topAppsBox.leadingAnchor).isActive = true
+            row.trailingAnchor.constraint(equalTo: topAppsBox.trailingAnchor).isActive = true
+        }
+
         let footerBox = vbox([totalLabel, uptimeLabel, estimateNote, rightClickHint])
 
         let stack = NSStackView()
@@ -200,7 +290,7 @@ final class PanelController: NSViewController {
         stack.spacing = 9
         stack.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
 
-        let fullWidthViews: [NSView] = [title, summaryBox, chartBox, footerBox, privilegeBox]
+        let fullWidthViews: [NSView] = [title, summaryBox, chartBox, topAppsBox, footerBox, privilegeBox]
         for v in fullWidthViews {
             stack.addArrangedSubview(v)
             stack.setCustomSpacing(8, after: v)
@@ -304,6 +394,11 @@ final class PanelController: NSViewController {
         storeRef = store
     }
 
+    /// 注入进程能耗 store 引用（耗电应用 TOP 列表数据源）。
+    func attachProcessStore(_ store: ProcessEnergyStore) {
+        processStoreRef = store
+    }
+
     /// 若面板打开，刷新一次（图表时段切换后）。
     func refreshIfShown() {
         guard isViewLoaded, let store = storeRef else { return }
@@ -366,3 +461,57 @@ final class PanelController: NSViewController {
         return df.date(from: key)
     }
 }
+
+// MARK: - 耗电应用条形行
+
+/// 单行应用条：背景按占比填充强调色（条形即背景），行内左侧"序号+名称"、
+/// 右侧"占比 · 归因 Wh"。项目无 TableView 先例且行数固定，纯手绘最简。
+final class TopAppRowView: NSView {
+
+    private let nameLabel = NSTextField(labelWithString: "")
+    private let valueLabel = NSTextField(labelWithString: "")
+    private var fraction: Double = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        nameLabel.font = NSFont.systemFont(ofSize: 10)
+        nameLabel.lineBreakMode = .byTruncatingTail
+        valueLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        valueLabel.textColor = .secondaryLabelColor
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(nameLabel)
+        addSubview(valueLabel)
+        NSLayoutConstraint.activate([
+            nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: valueLabel.leadingAnchor, constant: -6),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// rank 为 nil 时表示聚合行（"其他"），名称置灰。
+    func configure(rank: Int?, name: String, share: Double, wh: Double) {
+        nameLabel.stringValue = rank.map { "\($0)  \(name)" } ?? "·  \(name)"
+        nameLabel.textColor = rank == nil ? .secondaryLabelColor : .labelColor
+        let pct = Int((share * 100).rounded())
+        valueLabel.stringValue = "\(pct)% · \(L10n.decimal(wh, fractionDigits: 1)) Wh"
+        fraction = share
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // 整行浅色底 + 按占比宽度的深色填充，双层圆角条。
+        NSColor.controlAccentColor.withAlphaComponent(0.10).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+        guard fraction > 0.001 else { return }
+        let width = max(bounds.width * min(1, fraction), 8)
+        let bar = NSRect(x: 0, y: 0, width: width, height: bounds.height)
+        NSColor.controlAccentColor.withAlphaComponent(0.32).setFill()
+        NSBezierPath(roundedRect: bar, xRadius: 4, yRadius: 4).fill()
+    }
+}
+

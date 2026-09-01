@@ -71,7 +71,8 @@ final class PowerStreamer {
         p.launchPath = "/usr/bin/sudo"
         p.arguments = ["-n", "/usr/bin/powermetrics",
                        "-i", String(intervalMs),
-                       "--samplers", "cpu_power,gpu_power"]
+                       "--samplers", "cpu_power,gpu_power,tasks",
+                       "--show-process-energy"]
         let stdout = Pipe()
         p.standardOutput = stdout
         // stderr 直接接 /dev/null：不消费数据的 readabilityHandler 会因

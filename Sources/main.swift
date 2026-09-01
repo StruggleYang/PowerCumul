@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let prefs = Preferences()
     private let store = EnergyStore()
+    private let processStore = ProcessEnergyStore()
     private lazy var alertManager = AlertManager(prefs: prefs, store: store)
     private var streamer: PowerStreamer?
     private let netMonitor = NetMonitor()
@@ -134,10 +135,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildPopover() {
         panelController = PanelController(prefs: prefs)
         panelController.attachStore(store)
+        panelController.attachProcessStore(processStore)
         popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = panelController
-        popover.contentSize = NSSize(width: 340, height: 420)
+        popover.contentSize = NSSize(width: 340, height: 580)
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {
@@ -177,6 +179,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let corrected = sample.applying(correctionFactor: prefs.powerCorrectionFactor)
         lastSample = corrected
         store.add(sample: corrected)
+        // 进程能耗是相对占比，不吃校正系数，用原始采样投喂。
+        processStore.add(rows: sample.processEnergy, at: sample.timestamp)
         alertManager.evaluate(currentW: corrected.totalMW / 1000, sample: corrected)
         DispatchQueue.main.async { [weak self] in
             self?.updateStatusItemTitle()
@@ -478,5 +482,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // 退出前终止常驻 powermetrics，避免遗留孤儿进程。
         streamer?.stop()
+        // 补写进行中的进程能耗桶（同一桶重启后由 load() 续算）。
+        processStore.flush()
     }
 }

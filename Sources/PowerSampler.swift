@@ -9,6 +9,14 @@
 
 import Foundation
 
+/// 单个进程的能耗行：来自 "--show-process-energy" 的 Energy Impact 列。
+/// Apple 的加权代理分（含 CPU/GPU/IO/网络），无官方物理单位，
+/// 只用其相对占比做归因（app 分数 / 全部分数 × 桶实测 Wh）。
+struct ProcessEnergyRow {
+    let name: String
+    let score: Double
+}
+
 /// 单次采样的瞬时功率快照（所有功率字段单位均为 mW）。
 struct PowerSample {
     let timestamp: Date
@@ -20,9 +28,12 @@ struct PowerSample {
     let dramMW: Double
     /// 解析来源说明（便于调试 / 面板提示）。
     let source: String
+    /// 本采样块内各进程的 Energy Impact（tasks 表为空时为空数组，不影响功率主流程）。
+    let processEnergy: [ProcessEnergyRow]
 
     /// 返回一个所有功率字段都乘以校正系数的新采样。
     /// 用于把 SoC 功耗估算成整机墙功耗（用户可用智能插座标定系数）。
+    /// processEnergy 是相对占比，不参与校正。
     func applying(correctionFactor: Double) -> PowerSample {
         PowerSample(timestamp: timestamp,
                     totalMW: totalMW * correctionFactor,
@@ -30,7 +41,8 @@ struct PowerSample {
                     gpuMW: gpuMW * correctionFactor,
                     aneMW: aneMW * correctionFactor,
                     dramMW: dramMW * correctionFactor,
-                    source: source)
+                    source: source,
+                    processEnergy: processEnergy)
     }
 }
 
@@ -43,7 +55,9 @@ enum PowerSampler {
         return parse(raw)
     }
 
-    /// 运行 `sudo -n powermetrics -i <ms> -n 1 --samplers cpu_power,gpu_power`，返回标准输出。
+    /// 运行 `sudo -n powermetrics -i <ms> -n 1 --samplers cpu_power,gpu_power,tasks
+    /// --show-process-energy`，返回标准输出。tasks + show-process-energy 提供
+    /// "Running tasks" 表（末列 Energy Impact）；功率段输出与不加时一致。
     private static func runPowerMetrics(intervalMs: Int) -> String? {
         let task = Process()
         task.launchPath = "/usr/bin/sudo"
@@ -51,7 +65,8 @@ enum PowerSampler {
         task.arguments = ["-n", "/usr/bin/powermetrics",
                           "-i", String(intervalMs),
                           "-n", "1",
-                          "--samplers", "cpu_power,gpu_power"]
+                          "--samplers", "cpu_power,gpu_power,tasks",
+                          "--show-process-energy"]
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -75,11 +90,13 @@ enum PowerSampler {
 
     /// 从 powermetrics 文本输出解析出一个 PowerSample。
     /// 解析顺序体现容错：先尝试新版 Combined，再旧版 Package，最后回退到分量求和。
+    /// 进程能耗表独立解析，失败不影响功率主流程。
     static func parse(_ text: String) -> PowerSample? {
         let cpu = firstMW(text, containing: "CPU Power")
         let gpu = firstMW(text, containing: "GPU Power")
         let ane = firstMW(text, containing: "ANE Power")
         let dram = firstMW(text, containing: "DRAM Power") ?? firstMW(text, containing: "DCS Power")
+        let processEnergy = parseProcessEnergy(text)
 
         // 1) 新版 macOS (Sonoma+): Combined Power (CPU + GPU + ANE): <n> mW
         //    注意 Combined 不含 DRAM，空闲时 CPU/GPU/ANE 都趋近 0 而内存仍在耗电，
@@ -91,17 +108,19 @@ enum PowerSampler {
                                gpuMW: gpu ?? 0,
                                aneMW: ane ?? 0,
                                dramMW: dram ?? 0,
-                               source: "Combined")
+                               source: "Combined",
+                               processEnergy: processEnergy)
         }
         // 2) 旧版 macOS: Package Power: <n> mW
-        if let pkg = firstMW(text, containing: "Package Power") {
+        if let pkg = firstMW(text, containing: "Package power") {
             return PowerSample(timestamp: Date(),
                                totalMW: pkg,
                                cpuMW: cpu ?? 0,
                                gpuMW: gpu ?? 0,
                                aneMW: ane ?? 0,
                                dramMW: dram ?? 0,
-                               source: "Package")
+                               source: "Package",
+                               processEnergy: processEnergy)
         }
         // 3) 回退：用能拿到的分量求和（CPU + GPU + ANE + DRAM）。
         let parts = [cpu, gpu, ane, dram].compactMap { $0 }
@@ -113,7 +132,50 @@ enum PowerSampler {
                            gpuMW: gpu ?? 0,
                            aneMW: ane ?? 0,
                            dramMW: dram ?? 0,
-                           source: "Sum")
+                           source: "Sum",
+                           processEnergy: processEnergy)
+    }
+
+    // MARK: - 进程能耗解析
+
+    /// 不参与统计的伪进程：测量工具自身开销、表尾聚合行（ALL_TASKS 为整机汇总，
+    /// 分数不等于各行之和，留在归一化分母里会把占比压低约一半）、已退出任务。
+    private static let excludedProcessNames: Set<String> = ["powermetrics", "sudo", "DEAD_TASKS", "ALL_TASKS"]
+
+    /// 解析 "*** Running tasks ***" 表（--show-process-energy 输出，末列为 Energy Impact）。
+    /// 实测行格式（macOS 26 / 25G83）：
+    /// `Name(可含空格/括号)  ID  CPUms/s  User%  D1  D2  W1  W2  EnergyImpact`
+    /// 名称列之后全部是数字列 → 从右往左剥离数字 token，剩余前缀即进程名。
+    /// 部分老版本输出独立的 "**** Process Energy report ****" 表，列结构相同，
+    /// 因此按「表头含 Energy Impact + 空行结束」识别，不依赖段落标题。
+    private static func parseProcessEnergy(_ text: String) -> [ProcessEnergyRow] {
+        var rows: [ProcessEnergyRow] = []
+        var headerIndex = -1
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+
+        // 先定位表头行（含 Energy Impact 列名的行），跳过其之前的所有内容。
+        for (i, raw) in lines.enumerated() {
+            if raw.contains("Energy Impact") {
+                headerIndex = i
+                break
+            }
+        }
+        guard headerIndex >= 0 else { return rows }
+
+        for raw in lines[(headerIndex + 1)...] {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { break }   // 空行 = 表结束
+            let tokens = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+            guard tokens.count >= 3 else { continue }
+            // 从右剥离数字列；停在首个非数字 token 上，其下标即名称的最后一个词。
+            var idx = tokens.count - 1
+            while idx >= 0, Double(tokens[idx]) != nil { idx -= 1 }
+            guard idx >= 0, idx + 2 < tokens.count else { continue }   // 需要名称 + 至少 2 个数字列
+            let name = tokens[0...idx].joined(separator: " ")
+            guard let score = Double(tokens.last!), !excludedProcessNames.contains(name) else { continue }
+            rows.append(ProcessEnergyRow(name: name, score: score))
+        }
+        return rows
     }
 
     /// 在文本中查找**同时包含给定子串**且以 ` <数字> mW` 结尾的第一行，返回数字（mW）。

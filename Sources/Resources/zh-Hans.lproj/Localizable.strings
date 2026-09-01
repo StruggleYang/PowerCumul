@@ -50,6 +50,12 @@
 "range.7d" = "7D";
 "range.30d" = "30D";
 
+// 耗电应用 TOP
+"topapps.title" = "耗电应用 TOP";
+"topapps.note" = "按系统能耗占比归因估算";
+"topapps.empty" = "暂无应用能耗数据（授权采样后按小时累计）";
+"topapps.other" = "其他";
+
 // 权限
 "privilege.warning" = "需要授权才能采样功率";
 "privilege.button" = "一键授权";

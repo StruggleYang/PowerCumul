@@ -50,6 +50,12 @@
 "range.7d" = "7D";
 "range.30d" = "30D";
 
+// Top power consumers
+"topapps.title" = "Top Consumers";
+"topapps.note" = "Attributed by system energy share";
+"topapps.empty" = "No per-app data yet (accrues hourly once granted)";
+"topapps.other" = "Other";
+
 // Privilege
 "privilege.warning" = "Authorization required to sample power";
 "privilege.button" = "Grant Access";
