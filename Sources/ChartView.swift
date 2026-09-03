@@ -219,7 +219,9 @@ final class ChartView: NSView {
             grid.line(to: NSPoint(x: r.maxX, y: y))
             grid.stroke()
 
-            let label = "\(Int(value))" as NSString
+            let label = (niceMax <= 2
+                ? String(format: "%.1f", value)      // 小功率下避免 1/0/0/0 重复刻度
+                : "\(Int(value))") as NSString
             let size = label.size(withAttributes: attrs)
             let origin = NSPoint(x: r.minX - size.width - 4,
                                  y: y - size.height / 2)
