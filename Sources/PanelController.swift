@@ -30,6 +30,10 @@ final class PanelController: NSViewController {
     private let topAppsEmptyLabel = NSTextField(labelWithString: "")
     private var topAppRows: [TopAppRowView] = []
     private weak var processStoreRef: ProcessEnergyStore?
+    /// 当前图表各柱对应的桶 key（与 chartView.data 平行），点击定位时按索引取桶。
+    private var chartBucketKeys: [String] = []
+    /// 点击图表选中的桶 key（nil = 跟随区间聚合）。
+    private var selectedBucketKey: String?
 
     // 底部
     private let totalLabel = NSTextField(labelWithString: "")
@@ -56,7 +60,7 @@ final class PanelController: NSViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 580))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 690))
         buildUI(in: container)
         self.view = container
     }
@@ -110,9 +114,11 @@ final class PanelController: NSViewController {
 
         // 图表数据按当前区间切换：24h 用小时桶（值=Wh≈该小时平均W），
         // 7天/30天 用天桶（值=kWh，按桶大小放大到可比刻度）。
+        // 同时记录各柱的桶 key，供图表点击定位 TOP 列表。
         switch prefs.chartRange {
         case .hours24:
             let recent = snapshot.hours.suffix(24)
+            chartBucketKeys = recent.map { $0.bucketKey }
             chartView.data = recent.map { bucket in
                 let hour = String(bucket.bucketKey.suffix(2))
                 return (label: "\(hour)", value: bucket.wh)   // Wh ≈ 平均W
@@ -121,6 +127,7 @@ final class PanelController: NSViewController {
         case .days7, .days30:
             let count = prefs.chartRange == .days7 ? 7 : 30
             let recent = snapshot.days.suffix(count)
+            chartBucketKeys = recent.map { $0.bucketKey }
             let df = DateFormatter()
             df.locale = Locale.current
             df.dateFormat = "MM-dd"
@@ -130,6 +137,13 @@ final class PanelController: NSViewController {
                 return (label: df.string(from: date), value: bucket.wh)
             }
             chartView.unitLabel = tr("power.unit")
+        }
+        // 选中索引随数据窗口滑动作位置映射：索引越界即视为取消选中。
+        if let idx = chartView.selectedIndex, idx >= chartBucketKeys.count {
+            chartView.clearSelection()
+            selectedBucketKey = nil
+        } else {
+            selectedBucketKey = chartView.selectedIndex.flatMap { chartBucketKeys[$0] }
         }
 
         let status = PrivilegeManager.currentStatus()
@@ -143,28 +157,43 @@ final class PanelController: NSViewController {
 
     // MARK: - 耗电应用 TOP
 
-    /// 按当前图表区间聚合进程能耗：5 个应用 + "其他"长尾行。
+    /// 按当前图表区间聚合进程能耗：TOP 10 应用 + "其他"长尾行。
+    /// 点击图表选中某柱时，切换为该小时/当天的单桶 TOP，标题追加桶标签。
     /// 归因口径：app 能耗分占比 × 区间实测总 Wh（Energy Impact 为加权代理分，Wh 是估算值）。
     private func refreshTopApps(snapshot: Snapshot) {
         guard let ps = processStoreRef else { return }
 
-        let count: Int
-        let totalWh: Double
         let tops: [ProcessEnergyStore.TopApp]
-        switch prefs.chartRange {
-        case .hours24:
-            let recent = snapshot.hours.suffix(24)
-            totalWh = recent.reduce(0) { $0 + $1.wh }
-            tops = ps.topApps(lastHours: 24, totalWh: totalWh)
-        case .days7, .days30:
-            count = prefs.chartRange == .days7 ? 7 : 30
-            let recent = snapshot.days.suffix(count)
-            totalWh = recent.reduce(0) { $0 + $1.wh }
-            tops = ps.topApps(lastDays: count, totalWh: totalWh)
+        let totalWh: Double
+        if let key = selectedBucketKey {
+            switch prefs.chartRange {
+            case .hours24:
+                totalWh = snapshot.hours.first { $0.bucketKey == key }?.wh ?? 0
+                tops = ps.topApps(hourKey: key, totalWh: totalWh)
+            case .days7, .days30:
+                totalWh = snapshot.days.first { $0.bucketKey == key }?.wh ?? 0
+                tops = ps.topApps(dayKey: key, totalWh: totalWh)
+            }
+            let idx = chartBucketKeys.firstIndex(of: key)
+            let bucketLabel = idx.flatMap { chartView.data.indices.contains($0) ? chartView.data[$0].label : nil } ?? key
+            topAppsHeader.stringValue = L10n.tr("topapps.titleSelected", "耗电应用 TOP · %@", bucketLabel)
+        } else {
+            switch prefs.chartRange {
+            case .hours24:
+                let recent = snapshot.hours.suffix(24)
+                totalWh = recent.reduce(0) { $0 + $1.wh }
+                tops = ps.topApps(lastHours: 24, totalWh: totalWh)
+            case .days7, .days30:
+                let count = prefs.chartRange == .days7 ? 7 : 30
+                let recent = snapshot.days.suffix(count)
+                totalWh = recent.reduce(0) { $0 + $1.wh }
+                tops = ps.topApps(lastDays: count, totalWh: totalWh)
+            }
+            topAppsHeader.stringValue = tr("topapps.title")
         }
         let other = ps.otherShare(of: tops)
 
-        // 前 5 行是应用，第 6 行是"其他"（长尾占比太小则隐藏）。
+        // 前 10 行是应用，最后一行是"其他"（长尾占比太小则隐藏）。
         for (i, row) in topAppRows.enumerated() {
             if i < tops.count {
                 row.isHidden = false
@@ -241,6 +270,9 @@ final class PanelController: NSViewController {
         chartBox.orientation = .vertical
         chartBox.alignment = .centerX
         chartBox.spacing = 10   // 时段切换与图表之间的间距（vbox 默认 2 太挤）
+        chartView.onSelectionChange = { [weak self] index in
+            self?.handleChartSelection(index)
+        }
 
         // 耗电应用 TOP 区块：标题行 + 6 个条形行（5 应用 + 其他）+ 空态文案。
         topAppsHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
@@ -267,7 +299,7 @@ final class PanelController: NSViewController {
         topAppsEmptyLabel.textColor = .tertiaryLabelColor
         topAppsEmptyLabel.stringValue = tr("topapps.empty")
 
-        for _ in 0..<6 {
+        for _ in 0..<11 {
             let row = TopAppRowView(frame: .zero)
             row.isHidden = true
             topAppRows.append(row)
@@ -369,8 +401,17 @@ final class PanelController: NSViewController {
     @objc private func chartRangeChanged() {
         if let r = ChartRange(rawValue: chartRangeSelector.selectedSegment) {
             prefs.chartRange = r
+            // 区间变了，点击选中的桶不再有意义，连同列表一起回到区间聚合。
+            chartView.clearSelection()
+            selectedBucketKey = nil
             refreshIfShown()
         }
+    }
+
+    /// 图表点击选中/取消：把选中索引映射为桶 key 后刷新 TOP 列表。
+    private func handleChartSelection(_ index: Int?) {
+        selectedBucketKey = index.flatMap { $0 < chartBucketKeys.count ? chartBucketKeys[$0] : nil }
+        refreshIfShown()
     }
 
     /// 配置图表时段分段控件（动态宽度，避免英文挤压）。

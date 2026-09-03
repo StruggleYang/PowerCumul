@@ -56,13 +56,17 @@ final class EnergyStore {
     private let stateURL: URL         // state.json（聚合）
     private(set) var state: AggregatedState
 
-    init() {
-        let fm = FileManager.default
-        let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    /// 数据目录（备份/恢复/ Finder 展示用）。
+    static var dataDirectory: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PowerCumul", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        samplesURL = dir.appendingPathComponent("samples.jsonl")
-        stateURL = dir.appendingPathComponent("state.json")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    init() {
+        samplesURL = Self.dataDirectory.appendingPathComponent("samples.jsonl")
+        stateURL = Self.dataDirectory.appendingPathComponent("state.json")
 
         if let data = try? Data(contentsOf: stateURL),
            let decoded = try? JSONDecoder().decode(AggregatedState.self, from: data) {
@@ -77,6 +81,9 @@ final class EnergyStore {
                                     days: [])
         }
     }
+
+    /// 备份/恢复需要的数据文件清单。
+    var dataFileURLs: [URL] { [samplesURL, stateURL] }
 
     // MARK: - 写入
 
@@ -117,8 +124,62 @@ final class EnergyStore {
                 persistState()
                 lastPersistAt = now
             }
+            trimRawSamplesIfNeeded(at: now)
             return snapshot()
         }
+    }
+
+    /// 重新累计：清零累计电量/今日电量并把"自"锚点重置为现在。
+    /// 图表历史（小时桶/天桶）保留，趋势不受影响；原始流不动。
+    func resetCumulative() {
+        queue.sync {
+            state.totalWh = 0
+            state.todayWh = 0
+            state.createdAt = Date()
+            persistState()
+        }
+    }
+
+    // MARK: - 原始流滚动清理
+
+    /// 原始样本保留天数：聚合已进小时桶/天桶，原始流只服务精细回看，留 7 天足够。
+    /// 文件此前无清理逻辑（实测一年可涨到数十 MB），跨天时整体重写一次。
+    private static let rawRetentionDays: Double = 7
+    private var lastRawTrimDayKey = ""
+
+    /// 跨天时把超过保留期的行裁掉（原子重写）。解析不出 ts 的行原样保留（宁多勿丢）。
+    private func trimRawSamplesIfNeeded(at now: Date) {
+        let dayK = Self.dayKey(now)
+        guard dayK != lastRawTrimDayKey else { return }
+        lastRawTrimDayKey = dayK
+        guard let text = try? String(contentsOf: samplesURL, encoding: .utf8) else { return }
+        let cutoff = now.timeIntervalSince1970 - Self.rawRetentionDays * 86400
+        var kept: [Substring] = []
+        var dropped = 0
+        for line in text.split(separator: "\n") {
+            if let ts = rawTimestamp(line), ts < cutoff {
+                dropped += 1
+            } else {
+                kept.append(line)
+            }
+        }
+        guard dropped > 0 else { return }
+        guard !kept.isEmpty else {
+            FileManager.default.createFile(atPath: samplesURL.path, contents: nil)
+            return
+        }
+        var out = kept.joined(separator: "\n")
+        out += "\n"
+        if let data = out.data(using: .utf8) {
+            try? data.write(to: samplesURL, options: .atomic)
+        }
+    }
+
+    /// 从一行 JSONL 里抠 "ts": <number>（JSONEncoder 无空格输出）。
+    private func rawTimestamp(_ line: Substring) -> Double? {
+        guard let keyRange = line.range(of: "\"ts\":") else { return nil }
+        let num = line[keyRange.upperBound...].prefix { $0.isNumber || $0 == "." }
+        return Double(num)
     }
 
     // MARK: - 读取

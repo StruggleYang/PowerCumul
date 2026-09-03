@@ -55,6 +55,11 @@
 "topapps.note" = "按系统能耗占比归因估算";
 "topapps.empty" = "暂无应用能耗数据（授权采样后按小时累计）";
 "topapps.other" = "其他";
+"topapps.titleSelected" = "耗电应用 TOP · %@";
+
+// 告警：进程持续高耗电
+"alert.process.title" = "进程持续高耗电";
+"alert.process.body" = "%@ 已持续 %d 分钟高耗电，归因功率约 %.1f W";
 
 // 权限
 "privilege.warning" = "需要授权才能采样功率";
@@ -127,6 +132,25 @@
 "statusbar.tooltip" = "左键：查看面板
 右键：设置";
 "menu.checkUpdate" = "检查更新…";
+
+// 数据管理
+"menu.data" = "数据";
+"menu.resetCumulative" = "重新累计…";
+"menu.backupData" = "备份数据…";
+"menu.restoreData" = "恢复数据…";
+"menu.revealData" = "在 Finder 中查看数据";
+"reset.confirm" = "累计电量与累计费用将清零并从现在重新计算。\n图表历史（24H/7D/30D）不受影响。确定吗？";
+"reset.confirmButton" = "重新累计";
+"backup.prompt" = "备份到此处";
+"backup.done" = "已备份 %d 个文件到 %@";
+"restore.prompt" = "选择备份夹";
+"restore.invalid" = "所选文件夹不包含 state.json，不是有效的备份";
+"restore.confirmTitle" = "恢复数据";
+"restore.confirm" = "将用 %@ 中的备份覆盖当前数据，并重启应用生效。确定吗？";
+"restore.confirmButton" = "恢复并重启";
+
+// 进程耗电告警
+"menu.processAlert" = "进程耗电告警";
 
 // 应用内更新
 "update.checking" = "正在检查更新…";

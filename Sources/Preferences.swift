@@ -21,6 +21,7 @@ final class Preferences {
         static let alertPowerThreshold = "alertPowerThresholdW"
         static let alertBudgetOn = "alertBudgetEnabled"
         static let alertBudgetThreshold = "alertBudgetThreshold"
+        static let alertProcessOn = "alertProcessEnabled"
         static let chartRange = "chartRange"
         static let correctionFactor = "powerCorrectionFactor"
     }
@@ -151,6 +152,15 @@ final class Preferences {
         }
         set {
             defaults.set(max(0, newValue), forKey: Key.alertBudgetThreshold)
+            defaults.synchronize()
+        }
+    }
+
+    /// 是否启用进程持续高耗电告警，默认关。
+    var processAlertEnabled: Bool {
+        get { defaults.bool(forKey: Key.alertProcessOn) }
+        set {
+            defaults.set(newValue, forKey: Key.alertProcessOn)
             defaults.synchronize()
         }
     }

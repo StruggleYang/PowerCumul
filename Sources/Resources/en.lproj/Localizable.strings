@@ -55,6 +55,11 @@
 "topapps.note" = "Attributed by system energy share";
 "topapps.empty" = "No per-app data yet (accrues hourly once granted)";
 "topapps.other" = "Other";
+"topapps.titleSelected" = "Top Consumers · %@";
+
+// Alerts: sustained high-power process
+"alert.process.title" = "Sustained High Power Process";
+"alert.process.body" = "%@ has drawn high power for %d min (~%.1f W attributed)";
 
 // Privilege
 "privilege.warning" = "Authorization required to sample power";
@@ -127,6 +132,25 @@
 "statusbar.tooltip" = "Left-click: Panel
 Right-click: Settings";
 "menu.checkUpdate" = "Check for Updates…";
+
+// Data management
+"menu.data" = "Data";
+"menu.resetCumulative" = "Reset Cumulative…";
+"menu.backupData" = "Backup Data…";
+"menu.restoreData" = "Restore Data…";
+"menu.revealData" = "Reveal Data in Finder";
+"reset.confirm" = "Cumulative energy and cost will reset to zero and accrue from now.\nChart history (24H/7D/30D) is kept. Continue?";
+"reset.confirmButton" = "Reset";
+"backup.prompt" = "Back Up Here";
+"backup.done" = "Backed up %d file(s) to %@";
+"restore.prompt" = "Choose Backup Folder";
+"restore.invalid" = "Selected folder has no state.json — not a valid backup";
+"restore.confirmTitle" = "Restore Data";
+"restore.confirm" = "Current data will be overwritten with the backup in %@, then the app restarts. Continue?";
+"restore.confirmButton" = "Restore & Restart";
+
+// Process power alert
+"menu.processAlert" = "Process Power Alert";
 
 // In-app update
 "update.checking" = "Checking for updates…";

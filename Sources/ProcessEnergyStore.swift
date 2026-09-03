@@ -70,6 +70,8 @@ final class ProcessEnergyStore {
     // MARK: - 写入
 
     /// 提交一个采样块的进程能耗行。桶 key 变化时把上一桶裁剪落盘。
+    /// 入库前做应用名归并："Foo Helper (Renderer)" / "Foo Helper" → "Foo"，
+    /// 否则 Chrome 等多进程应用会把自己的排名拆成好几行。
     func add(rows: [ProcessEnergyRow], at date: Date) {
         guard !rows.isEmpty else { return }
         queue.sync {
@@ -90,9 +92,10 @@ final class ProcessEnergyStore {
                 currentDay = Bucket(apps: [:], total: 0)
             }
             for r in rows {
-                currentHour.apps[r.name, default: 0] += r.score
+                let name = Self.baseAppName(r.name)
+                currentHour.apps[name, default: 0] += r.score
                 currentHour.total += r.score
-                currentDay.apps[r.name, default: 0] += r.score
+                currentDay.apps[name, default: 0] += r.score
                 currentDay.total += r.score
             }
         }
@@ -112,9 +115,22 @@ final class ProcessEnergyStore {
 
     // MARK: - 查询
 
+    /// 单个桶（按小时 key）的 TOP 应用，用于图表点击定位。
+    /// 命中已完成桶或进行中的当前桶；都未命中返回空数组。
+    func topApps(hourKey: String, totalWh: Double, top: Int = 10) -> [TopApp] {
+        let bucket: Bucket? = (hourKey == currentHourKey) ? currentHour : hourBuckets[hourKey]
+        return merge(window: bucket.map { [$0] } ?? [], totalWh: totalWh, top: top)
+    }
+
+    /// 单个桶（按天 key）的 TOP 应用。
+    func topApps(dayKey: String, totalWh: Double, top: Int = 10) -> [TopApp] {
+        let bucket: Bucket? = (dayKey == currentDayKey) ? currentDay : dayBuckets[dayKey]
+        return merge(window: bucket.map { [$0] } ?? [], totalWh: totalWh, top: top)
+    }
+
     /// 最近 count 个小时桶（含进行中的当前桶）的 TOP 应用聚合。
     /// - Parameter totalWh: 同区间的实测总能量（EnergyStore 小时桶求和），用于归因换算。
-    func topApps(lastHours count: Int, totalWh: Double, top: Int = 5) -> [TopApp] {
+    func topApps(lastHours count: Int, totalWh: Double, top: Int = 10) -> [TopApp] {
         var keys = Array(hourBuckets.keys.sorted().suffix(count))
         if let cur = currentHourKey, currentHour.total > 0, !keys.contains(cur) {
             keys.append(cur)   // key 字典序即时间序，当前桶必然排最后
@@ -127,7 +143,7 @@ final class ProcessEnergyStore {
     }
 
     /// 最近 count 个天桶（含进行中的当天桶）的 TOP 应用聚合。
-    func topApps(lastDays count: Int, totalWh: Double, top: Int = 5) -> [TopApp] {
+    func topApps(lastDays count: Int, totalWh: Double, top: Int = 10) -> [TopApp] {
         var keys = Array(dayBuckets.keys.sorted().suffix(count))
         if let cur = currentDayKey, currentDay.total > 0, !keys.contains(cur) {
             keys.append(cur)
@@ -139,12 +155,14 @@ final class ProcessEnergyStore {
     }
 
     /// 跨桶按进程名求和，再按分数排序取 TOP；长尾并入"其他"由调用方决定是否展示。
+    /// 求和时再做一次名称归并：v0.07 之前落盘的旧桶里 Helper 名是拆开的，查询侧归并
+    /// 可以让历史数据与新版入库数据呈现一致。
     private func merge(window: [Bucket], totalWh: Double, top: Int) -> [TopApp] {
         var merged: [String: Double] = [:]
         var denominator = 0.0
         for b in window {
             for (name, score) in b.apps {
-                merged[name, default: 0] += score
+                merged[Self.baseAppName(name), default: 0] += score
             }
             denominator += b.total
         }
@@ -258,4 +276,19 @@ final class ProcessEnergyStore {
 
     static func hourKey(_ d: Date) -> String { hourFormatter.string(from: d) }
     static func dayKey(_ d: Date) -> String { dayFormatter.string(from: d) }
+
+    /// 暴露数据文件路径（备份/恢复用）。
+    var dataFileURL: URL { fileURL }
+
+    /// 应用名归并：剥离 " Helper" 及 " Helper (…)" 后缀，
+    /// "Google Chrome Helper (Renderer)" / "Google Chrome Helper" → "Google Chrome"。
+    /// 只在恰好以 Helper 结尾（后面最多跟一个括号组）时归并，避免误伤名称里带 Helper 的应用。
+    static func baseAppName(_ raw: String) -> String {
+        guard let range = raw.range(of: " Helper") else { return raw }
+        let suffix = raw[range.upperBound...].trimmingCharacters(in: .whitespaces)
+        if suffix.isEmpty || (suffix.hasPrefix("(") && suffix.hasSuffix(")")) {
+            return String(raw[..<range.lowerBound])
+        }
+        return raw
+    }
 }

@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = EnergyStore()
     private let processStore = ProcessEnergyStore()
     private lazy var alertManager = AlertManager(prefs: prefs, store: store)
+    private lazy var processAlertManager = ProcessAlertManager(prefs: prefs)
+    private lazy var statusExporter = StatusExporter(prefs: prefs, store: store, processStore: processStore)
     private var streamer: PowerStreamer?
     private let netMonitor = NetMonitor()
     private var netTimer: Timer?
@@ -50,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildPopover()
         startSampling()
         startNetMonitor()
+        statusExporter.start()   // 每分钟写出 status.json 供外部脚本/监控读取
         observePrefs()
     }
 
@@ -124,6 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             parts.append("↑\(NetMonitor.format(netMonitor.upBytesPerSec)) ↓\(NetMonitor.format(netMonitor.downBytesPerSec))")
         }
         button.title = " " + parts.joined(separator: " · ")
+
+        // 功率超阈值时图标染红，比通知更即时的视觉反馈（恢复后还原模板色）。
+        button.contentTintColor = w >= prefs.alertPowerThresholdW ? .systemRed : nil
     }
 
     private func tr(_ key: String) -> String {
@@ -181,6 +187,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.add(sample: corrected)
         // 进程能耗是相对占比，不吃校正系数，用原始采样投喂。
         processStore.add(rows: sample.processEnergy, at: sample.timestamp)
+        processAlertManager.evaluate(rows: sample.processEnergy,
+                                     systemW: corrected.totalMW / 1000)
         alertManager.evaluate(currentW: corrected.totalMW / 1000, sample: corrected)
         DispatchQueue.main.async { [weak self] in
             self?.updateStatusItemTitle()
@@ -281,6 +289,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let budgetAlert = menu.addItem(withTitle: NSLocalizedString("menu.budgetAlert", value: "日预算告警", comment: ""), action: #selector(toggleBudgetAlert), keyEquivalent: "")
         budgetAlert.target = self
         budgetAlert.state = prefs.alertBudgetEnabled ? .on : .off
+        let processAlert = menu.addItem(withTitle: NSLocalizedString("menu.processAlert", value: "进程耗电告警", comment: ""), action: #selector(toggleProcessAlert), keyEquivalent: "")
+        processAlert.target = self
+        processAlert.state = prefs.processAlertEnabled ? .on : .off
         // 阈值编辑（弹输入框）
         menu.addItem(withTitle: String(format: NSLocalizedString("menu.powerThreshold", value: "功率阈值: %.0fW", comment: ""), prefs.alertPowerThresholdW), action: #selector(editPowerThreshold), keyEquivalent: "").target = self
         menu.addItem(withTitle: String(format: NSLocalizedString("menu.budgetThreshold", value: "日预算: %.2f", comment: ""), prefs.alertBudgetThreshold), action: #selector(editBudgetThreshold), keyEquivalent: "").target = self
@@ -294,6 +305,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 导出 CSV
         menu.addItem(withTitle: NSLocalizedString("settings.export", value: "导出 CSV", comment: ""), action: #selector(exportCSVFromMenu), keyEquivalent: "").target = self
+
+        // 数据管理子菜单：重置 / 备份 / 恢复 / Finder 查看
+        let dataMenu = NSMenu()
+        let dataItems: [(String, Selector)] = [
+            (NSLocalizedString("menu.resetCumulative", value: "重新累计…", comment: ""), #selector(resetCumulative(_:))),
+            (NSLocalizedString("menu.backupData", value: "备份数据…", comment: ""), #selector(backupData(_:))),
+            (NSLocalizedString("menu.restoreData", value: "恢复数据…", comment: ""), #selector(restoreData(_:))),
+            (NSLocalizedString("menu.revealData", value: "在 Finder 中查看数据", comment: ""), #selector(revealData(_:))),
+        ]
+        for (title, sel) in dataItems {
+            let item = dataMenu.addItem(withTitle: title, action: sel, keyEquivalent: "")
+            item.target = self
+        }
+        menu.addItem(withTitle: NSLocalizedString("menu.data", value: "数据", comment: ""), action: nil, keyEquivalent: "").submenu = dataMenu
 
         // 授权（若未授权才显示）
         if PrivilegeManager.currentStatus() == .missing {
@@ -341,6 +366,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleBudgetAlert() {
         prefs.alertBudgetEnabled.toggle()
         if prefs.alertBudgetEnabled { AlertManager.requestAuthorizationShared() }
+    }
+    @objc private func toggleProcessAlert() {
+        prefs.processAlertEnabled.toggle()
+        if prefs.processAlertEnabled { AlertManager.requestAuthorizationShared() }
+    }
+
+    // MARK: - 数据管理
+
+    /// 重新累计：清零累计电量/费用基线（图表历史保留），需确认。
+    @objc private func resetCumulative(_ sender: Any?) {
+        let a = NSAlert()
+        a.messageText = NSLocalizedString("menu.resetCumulative", value: "重新累计", comment: "")
+        a.informativeText = NSLocalizedString("reset.confirm",
+            value: "累计电量与累计费用将清零并从现在重新计算。\n图表历史（24H/7D/30D）不受影响。确定吗？", comment: "")
+        a.alertStyle = .warning
+        a.addButton(withTitle: NSLocalizedString("reset.confirmButton", value: "重新累计", comment: ""))
+        a.addButton(withTitle: NSLocalizedString("menu.cancel", value: "取消", comment: ""))
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        store.resetCumulative()
+        refreshAll()
+    }
+
+    /// 备份数据：把 state.json / samples.jsonl / process_energy.jsonl 拷到用户选择的目标夹。
+    @objc private func backupData(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = NSLocalizedString("backup.prompt", value: "备份到此处", comment: "")
+        guard panel.runModal() == .OK, let dir = panel.url else { return }
+
+        let files = store.dataFileURLs + [processStore.dataFileURL]
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let fm = FileManager.default
+            var copied = 0
+            for src in files where fm.fileExists(atPath: src.path) {
+                let dst = dir.appendingPathComponent(src.lastPathComponent)
+                try? fm.removeItem(at: dst)
+                if (try? fm.copyItem(at: src, to: dst)) != nil { copied += 1 }
+            }
+            DispatchQueue.main.async {
+                self?.dataDoneAlert(
+                    text: L10n.tr("backup.done", "已备份 %d 个文件到 %@", copied, dir.path))
+            }
+        }
+    }
+
+    /// 恢复数据：从备份夹覆盖当前数据，完成后重启应用生效。
+    @objc private func restoreData(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = NSLocalizedString("restore.prompt", value: "选择备份夹", comment: "")
+        guard panel.runModal() == .OK, let dir = panel.url else { return }
+        // 至少要有 state.json 才算有效备份。
+        guard FileManager.default.fileExists(atPath: dir.appendingPathComponent("state.json").path) else {
+            dataDoneAlert(text: NSLocalizedString("restore.invalid", value: "所选文件夹不包含 state.json，不是有效的备份", comment: ""))
+            return
+        }
+        let a = NSAlert()
+        a.messageText = NSLocalizedString("restore.confirmTitle", value: "恢复数据", comment: "")
+        a.informativeText = L10n.tr("restore.confirm", "将用 %@ 中的备份覆盖当前数据，并重启应用生效。确定吗？", dir.path)
+        a.alertStyle = .warning
+        a.addButton(withTitle: NSLocalizedString("restore.confirmButton", value: "恢复并重启", comment: ""))
+        a.addButton(withTitle: NSLocalizedString("menu.cancel", value: "取消", comment: ""))
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+
+        streamer?.stop()
+        let files = store.dataFileURLs + [processStore.dataFileURL]
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let fm = FileManager.default
+            for dst in files {
+                let src = dir.appendingPathComponent(dst.lastPathComponent)
+                guard fm.fileExists(atPath: src.path) else { continue }
+                try? fm.removeItem(at: dst)
+                try? fm.copyItem(at: src, to: dst)
+            }
+            DispatchQueue.main.async { self?.relaunch() }
+        }
+    }
+
+    /// 在 Finder 中展示数据目录。
+    @objc private func revealData(_ sender: Any?) {
+        NSWorkspace.shared.activateFileViewerSelecting([EnergyStore.dataDirectory])
+    }
+
+    private func dataDoneAlert(text: String) {
+        let a = NSAlert()
+        a.messageText = text
+        a.alertStyle = .informational
+        a.runModal()
     }
     @objc private func toggleLaunchAtLogin() {
         let service = SMAppService.mainApp
@@ -482,6 +600,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // 退出前终止常驻 powermetrics，避免遗留孤儿进程。
         streamer?.stop()
+        statusExporter.stop()
         // 补写进行中的进程能耗桶（同一桶重启后由 load() 续算）。
         processStore.flush()
     }

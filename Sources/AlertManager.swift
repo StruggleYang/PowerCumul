@@ -39,6 +39,20 @@ final class AlertManager {
         }
     }
 
+    /// 进程持续高耗电通知（ProcessAlertManager 触发）。
+    static func notifyProcessHighConsumption(name: String, attributedW: Double, minutes: Int) {
+        let body = String(format: NSLocalizedString(
+            "alert.process.body", value: "%@ 已持续 %d 分钟高耗电，归因功率约 %.1f W", comment: ""),
+                          name, minutes, attributedW)
+        let content = UNMutableNotificationContent()
+        content.title = NSLocalizedString("alert.process.title", value: "进程持续高耗电", comment: "")
+        content.body = body
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
     /// 每次采样后调用，按当前功率 + 今日累计费用判断是否告警。
     /// - Parameters:
     ///   - watt: 当前瞬时功率（W）

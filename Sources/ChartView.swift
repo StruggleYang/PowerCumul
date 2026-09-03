@@ -20,6 +20,13 @@ final class ChartView: NSView {
         didSet { needsDisplay = true }
     }
 
+    /// 点击某根柱后回调（选中索引；再次点击同一根或点空白回调 nil 表示取消）。
+    var onSelectionChange: ((Int?) -> Void)?
+    private(set) var selectedIndex: Int?
+    private var hoveredIndex: Int?
+    /// 上次 draw 记录的绘图区与点数，鼠标事件据此反推索引。
+    private var layout: (plot: NSRect, count: Int)?
+
     // 配色（在 draw 里按明暗模式取色）。
     private let lineColor = NSColor.systemBlue
     private let fillColor = NSColor.systemBlue.withAlphaComponent(0.15)
@@ -28,17 +35,71 @@ final class ChartView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = 8
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        commonInit()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
         wantsLayer = true
         layer?.cornerRadius = 8
         // 不设 layer 背景色：让 popover 的毛玻璃背景透过来，
         // 与面板其他区域保持一致（避免图表出现不透明白色块）。
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self {
+            removeTrackingArea(area)
+        }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .activeInActiveApp],
+            owner: self,
+            userInfo: nil))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let idx = hitIndex(at: convert(event.locationInWindow, from: nil))
+        if idx != hoveredIndex {
+            hoveredIndex = idx
+            needsDisplay = true
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hoveredIndex = nil
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let idx = hitIndex(at: convert(event.locationInWindow, from: nil))
+        if idx == nil || idx == selectedIndex {
+            selectedIndex = nil
+        } else {
+            selectedIndex = idx
+        }
+        needsDisplay = true
+        onSelectionChange?(selectedIndex)
+    }
+
+    /// 区间切换时由外部清空选中态（不触发回调，调用方自行刷新列表）。
+    func clearSelection() {
+        selectedIndex = nil
+        hoveredIndex = nil
+        needsDisplay = true
+    }
+
+    /// 把视图内坐标换算成最近的柱索引；不在绘图区内返回 nil。
+    private func hitIndex(at p: NSPoint) -> Int? {
+        guard let layout, layout.count > 0,
+              layout.plot.insetBy(dx: -4, dy: -8).contains(p) else { return nil }
+        let colWidth = layout.plot.width / CGFloat(layout.count)
+        let idx = Int((p.x - layout.plot.minX) / colWidth)
+        return min(max(idx, 0), layout.count - 1)
     }
 
     override var intrinsicContentSize: NSSize {
@@ -67,9 +128,53 @@ final class ChartView: NSView {
         let maxValue = max(data.map(\.value).max() ?? 1, 1)   // 避免 max=0 除零
         let niceMax = Self.niceCeil(maxValue)
 
+        layout = (plot: plotRect, count: data.count)
         drawGridAndAxes(plotRect, niceMax: niceMax)
         drawLine(plotRect, niceMax: niceMax)
         drawXLabels(plotRect)
+        drawColumnHighlight(plotRect)
+        drawTooltip(plotRect)
+    }
+
+    /// 选中/悬停的整列高亮（半透明覆盖条）。
+    private func drawColumnHighlight(_ plot: NSRect) {
+        let indices = [selectedIndex, hoveredIndex].compactMap { $0 }
+        guard !indices.isEmpty, data.count > 1 else { return }
+        let colWidth = plot.width / CGFloat(data.count)
+        for i in indices {
+            let bar = NSRect(x: plot.minX + CGFloat(i) * colWidth,
+                             y: plot.minY,
+                             width: colWidth,
+                             height: plot.height)
+            let alpha: CGFloat = (i == selectedIndex) ? 0.14 : 0.08
+            NSColor.controlAccentColor.withAlphaComponent(alpha).setFill()
+            bar.fill()
+        }
+    }
+
+    /// 悬停提示：该柱的标签 + 数值 + 单位，画在绘图区顶部（靠柱、防出界）。
+    private func drawTooltip(_ plot: NSRect) {
+        guard let i = hoveredIndex, i < data.count, data.count > 1 else { return }
+        let item = data[i]
+        let text = "\(item.label)  \(L10n.decimal(item.value, fractionDigits: 1)) \(unitLabel)" as NSString
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium),
+            .foregroundColor: NSColor.labelColor,
+        ]
+        let size = text.size(withAttributes: attrs)
+        let pad: CGFloat = 5
+        let colWidth = plot.width / CGFloat(data.count)
+        var boxX = plot.minX + CGFloat(i) * colWidth + colWidth / 2 - size.width / 2 - pad
+        boxX = min(max(boxX, bounds.minX + 2), bounds.maxX - size.width - pad * 2 - 2)
+        let boxY = plot.maxY - size.height - pad * 2 + 2
+        let box = NSRect(x: boxX, y: boxY, width: size.width + pad * 2, height: size.height + pad * 2)
+        NSColor.controlBackgroundColor.withAlphaComponent(0.92).setFill()
+        NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).fill()
+        NSColor.separatorColor.setStroke()
+        NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).lineWidth = 0.5
+        NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).stroke()
+        text.draw(at: NSPoint(x: box.midX - size.width / 2, y: box.midY - size.height / 2),
+                  withAttributes: attrs)
     }
 
     // MARK: - 子绘制
