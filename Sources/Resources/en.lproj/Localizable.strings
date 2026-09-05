@@ -161,3 +161,20 @@ Right-click: Settings";
 "update.installFail" = "Update failed: %@";
 "mode.net" = "Net";
 "menu.iconOnly" = "Icon Only";
+
+// Battery (laptops only; auto-hidden on batteryless Macs)
+"mode.battery" = "Battery";
+"battery.title" = "Battery";
+"battery.state.charging" = "Charging";
+"battery.state.plugged" = "On Power";
+"battery.state.discharging" = "On Battery";
+"battery.state.full" = "Fully Charged";
+"battery.health" = "Health %d%%";
+"battery.cycles" = "%d cycles";
+"battery.temp" = "%.0f°C";
+"battery.power.charging" = "Charging %@";
+"battery.power.discharging" = "Discharging %@";
+"battery.timeToFull" = "Full in %@";
+"battery.timeToEmpty" = "%@ left";
+"battery.duration.h" = "%dh %02dm";
+"battery.duration.m" = "%dm";

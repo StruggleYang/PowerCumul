@@ -35,6 +35,14 @@ final class PanelController: NSViewController {
     /// 点击图表选中的桶 key（nil = 跟随区间聚合）。
     private var selectedBucketKey: String?
 
+    // 电池区块（仅笔记本显示；mini/台式机无电池 → 整体隐藏，布局零影响）
+    private let batteryHeader = NSTextField(labelWithString: "")
+    private let batteryStateLabel = NSTextField(labelWithString: "")
+    private let batteryHealthLabel = NSTextField(labelWithString: "")
+
+    /// 电池卡片在面板中的高度（标题行 + 状态行 + 健康行 + 间距）。
+    static let batterySectionHeight: CGFloat = 50
+
     // 底部
     private let totalLabel = NSTextField(labelWithString: "")
     private let uptimeLabel = NSTextField(labelWithString: "")
@@ -60,7 +68,10 @@ final class PanelController: NSViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 690))
+        // 有电池的设备（笔记本）面板高出电池卡片区；mini/台式机保持原布局。
+        let hasBattery = BatteryMonitor.hasBattery()
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340,
+                                             height: hasBattery ? 690 + PanelController.batterySectionHeight : 690))
         buildUI(in: container)
         self.view = container
     }
@@ -153,6 +164,66 @@ final class PanelController: NSViewController {
         }
 
         refreshTopApps(snapshot: snapshot)
+        refreshBattery()
+    }
+
+    // MARK: - 电池
+
+    /// 刷新电池区块。每次面板刷新都重新读一次（IOKit 纯读，开销微秒级），
+    /// 这样即使功率采样未授权（面板仍可打开）电池信息也是活的。
+    private func refreshBattery() {
+        let info = BatteryMonitor.current()
+        batteryHeader.isHidden = !info.hasBattery
+        batteryStateLabel.isHidden = !info.hasBattery
+        batteryHealthLabel.isHidden = !info.hasBattery
+        guard info.hasBattery else { return }
+
+        let level = info.levelPercent.map { "\($0)%" } ?? "—"
+        var state = "\(info.isExternalConnected ? "🔌" : "🔋") \(level)"
+        if info.isCharging {
+            state += " · \(tr("battery.state.charging"))"
+            if let m = info.timeToFullMinutes {
+                state += " · " + L10n.tr("battery.timeToFull", "%@后充满", formatMinutes(m))
+            }
+        } else if info.isExternalConnected {
+            state += " · " + (info.isFullyCharged || info.levelPercent == 100
+                ? tr("battery.state.full") : tr("battery.state.plugged"))
+        } else {
+            state += " · \(tr("battery.state.discharging"))"
+            if let m = info.timeToEmptyMinutes {
+                state += " · " + L10n.tr("battery.timeToEmpty", "剩余 %@", formatMinutes(m))
+            }
+        }
+        batteryStateLabel.stringValue = state
+
+        // 健康行：各字段缺啥省啥，全缺则整行隐藏（很罕见）。
+        var facts: [String] = []
+        if let h = info.healthPercent {
+            facts.append(L10n.tr("battery.health", "健康度 %d%%", h))
+        }
+        if let c = info.cycleCount {
+            facts.append(L10n.tr("battery.cycles", "循环 %d 次", c))
+        }
+        if let t = info.temperatureC {
+            facts.append(String(format: tr("battery.temp"), t))
+        }
+        if let w = info.powerW, w > 0.05 {
+            let ws = L10n.decimal(w, fractionDigits: 1) + " W"
+            facts.append(info.isCharging
+                ? L10n.tr("battery.power.charging", "充电 %@", ws)
+                : L10n.tr("battery.power.discharging", "放电 %@", ws))
+        }
+        batteryHealthLabel.stringValue = facts.joined(separator: " · ")
+        batteryHealthLabel.isHidden = facts.isEmpty
+    }
+
+    /// 分钟数 → 本地化时长（"3小时05分" / "45分"）。
+    private func formatMinutes(_ mins: Int) -> String {
+        let h = mins / 60
+        let m = mins % 60
+        return h > 0
+            ? L10n.tr("battery.duration.h", "%d小时%02d分", h, m)
+            : L10n.tr("battery.duration.m", "%d分", m)
     }
 
     // MARK: - 耗电应用 TOP
@@ -258,6 +329,21 @@ final class PanelController: NSViewController {
         summaryBox.spacing = 10   // 实时功率与今日电量之间的间距，紧凑
         summaryBox.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
 
+        // 电池区块：与图表/TOP 区块同款标题风格；无电池设备上三行全部隐藏。
+        batteryHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        batteryHeader.textColor = .secondaryLabelColor
+        batteryHeader.stringValue = tr("battery.title")
+        batteryStateLabel.font = NSFont.systemFont(ofSize: 11)
+        batteryHealthLabel.font = NSFont.systemFont(ofSize: 10)
+        batteryHealthLabel.textColor = .secondaryLabelColor
+        let batteryBox = NSStackView(views: [batteryHeader, batteryStateLabel, batteryHealthLabel])
+        batteryBox.orientation = .vertical
+        batteryBox.alignment = .leading
+        batteryBox.spacing = 3
+        // 构建时立即定好初始可见性：无电池设备（mini）上首帧就是隐藏态，
+        // 不等第一次采样刷新（冷打开面板时采样可能几秒后才到）。
+        refreshBattery()
+
         // 图表 + 时段切换组合成一个区块。时段切换行与图表之间留出足够间距。
         let chartHeader = NSTextField(labelWithString: tr("chart.title"))
         chartHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
@@ -322,7 +408,7 @@ final class PanelController: NSViewController {
         stack.spacing = 9
         stack.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
 
-        let fullWidthViews: [NSView] = [title, summaryBox, chartBox, topAppsBox, footerBox, privilegeBox]
+        let fullWidthViews: [NSView] = [title, summaryBox, batteryBox, chartBox, topAppsBox, footerBox, privilegeBox]
         for v in fullWidthViews {
             stack.addArrangedSubview(v)
             stack.setCustomSpacing(8, after: v)

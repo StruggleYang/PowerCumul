@@ -73,9 +73,10 @@ struct StatusComponent: OptionSet {
     static let cost  = StatusComponent(rawValue: 1 << 1)   // 累计电费
     static let kwh   = StatusComponent(rawValue: 1 << 2)   // 累计电量
     static let net   = StatusComponent(rawValue: 1 << 3)   // 网速
+    static let battery = StatusComponent(rawValue: 1 << 4) // 电池（仅笔记本，无电池设备上隐藏）
 
     /// 菜单展示顺序与标签（本地化）。
-    static var all: [StatusComponent] { [.power, .cost, .kwh, .net] }
+    static var all: [StatusComponent] { [.power, .cost, .kwh, .net, .battery] }
 
     var label: String {
         switch self {
@@ -83,6 +84,7 @@ struct StatusComponent: OptionSet {
         case .cost:  return NSLocalizedString("mode.cost", value: "费用", comment: "状态栏组件：费用")
         case .kwh:   return NSLocalizedString("mode.kwh", value: "电量", comment: "状态栏组件：电量")
         case .net:   return NSLocalizedString("mode.net", value: "网速", comment: "状态栏组件：网速")
+        case .battery: return NSLocalizedString("mode.battery", value: "电池", comment: "状态栏组件：电池（仅笔记本）")
         default:     return ""
         }
     }

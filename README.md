@@ -20,8 +20,9 @@ A lightweight macOS menu bar app to track cumulative power consumption of your M
 
 ## ✨ Features
 
-- **Status bar real-time display**: composable — toggle Power / cumulative Cost / cumulative Energy / Net speed as needed (default Power+Cost), none checked = icon only
+- **Status bar real-time display**: composable — toggle Power / cumulative Cost / cumulative Energy / Net speed / Battery (laptops) as needed (default Power+Cost), none checked = icon only
 - **Popover panel** (left-click): real-time power + CPU/GPU/ANE breakdown, today's kWh, estimated cost
+- **Battery info** (laptops only): panel battery card — charge level, charging state with time-to-full/empty estimate, battery health, cycle count, temperature, charge/discharge power; auto-hidden on batteryless Macs (Mac mini / iMac), and the status-bar Battery component only appears on laptops
 - **Context menu** (right-click): all settings — sample interval, currency, price, correction factor, status bar mode, language, alerts, launch-at-login, export CSV, check for updates
 - **In-app updates**: Check for Updates pulls the latest GitHub Release, downloads, installs in place, and relaunches — no browser, no manual download (with a rate-limit-free fallback channel)
 - **Alert notifications**: power exceeds threshold / daily cost exceeds budget (debounced, no spam)
@@ -155,6 +156,7 @@ PowerCumul/
 │   ├── EnergyStore.swift     # cumulative energy + two-layer persistence (samples.jsonl + state.json)
 │   ├── ChartView.swift       # Core Graphics line chart (24H/7D/30D)
 │   ├── PanelController.swift # NSPopover panel layout & refresh
+│   ├── BatteryMonitor.swift  # read-only battery sampling (level/health/cycles/temp; auto-degrades without battery)
 │   ├── AlertManager.swift    # power/budget alerts (system notifications + debounce)
 │   ├── CSVExporter.swift     # CSV export (daily + hourly)
 │   ├── PrivilegeManager.swift# in-app authorization (native password prompt → sudoers)

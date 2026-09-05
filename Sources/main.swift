@@ -126,6 +126,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if comps.contains(.net) {
             parts.append("↑\(NetMonitor.format(netMonitor.upBytesPerSec)) ↓\(NetMonitor.format(netMonitor.downBytesPerSec))")
         }
+        // 电池：外接电源 🔌 / 使用电池 🔋。无电池设备（mini）上勾选了也不显示。
+        if comps.contains(.battery), BatteryMonitor.hasBattery() {
+            let batt = BatteryMonitor.current()
+            if let lvl = batt.levelPercent {
+                parts.append("\(batt.isExternalConnected ? "🔌" : "🔋")\(lvl)%")
+            }
+        }
         button.title = " " + parts.joined(separator: " · ")
 
         // 功率超阈值时图标染红，比通知更即时的视觉反馈（恢复后还原模板色）。
@@ -145,7 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = panelController
-        popover.contentSize = NSSize(width: 340, height: 580)
+        // 笔记本上多一块电池卡片，面板相应加高；mini/台式机保持原高度。
+        popover.contentSize = NSSize(width: 340,
+                                     height: BatteryMonitor.hasBattery()
+                                         ? 580 + PanelController.batterySectionHeight
+                                         : 580)
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {
@@ -257,8 +268,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 状态栏显示模式子菜单
         let modeMenu = NSMenu()
-        // 组件开关：勾选组合，全不勾 = 仅图标。
+        // 组件开关：勾选组合，全不勾 = 仅图标。电池组件仅在有电池的设备上出现。
+        let hasBattery = BatteryMonitor.hasBattery()
         for comp in StatusComponent.all {
+            if comp == .battery && !hasBattery { continue }
             let item = modeMenu.addItem(withTitle: comp.label, action: #selector(toggleStatusComponent(_:)), keyEquivalent: "")
             item.target = self
             item.state = prefs.statusComponents.contains(comp) ? .on : .off

@@ -161,3 +161,20 @@
 "update.installFail" = "更新失败：%@";
 "mode.net" = "网速";
 "menu.iconOnly" = "仅图标";
+
+// 电池（仅笔记本；mini/台式机无电池自动隐藏）
+"mode.battery" = "电池";
+"battery.title" = "电池";
+"battery.state.charging" = "充电中";
+"battery.state.plugged" = "已接电源";
+"battery.state.discharging" = "使用电池";
+"battery.state.full" = "已充满";
+"battery.health" = "健康度 %d%%";
+"battery.cycles" = "循环 %d 次";
+"battery.temp" = "%.0f°C";
+"battery.power.charging" = "充电 %@";
+"battery.power.discharging" = "放电 %@";
+"battery.timeToFull" = "%@后充满";
+"battery.timeToEmpty" = "剩余 %@";
+"battery.duration.h" = "%d小时%02d分";
+"battery.duration.m" = "%d分";
