@@ -101,9 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 刷新状态栏文字。常规组件（功率/费用/电量/电池）一行常规字号；
-    /// 网速改小字省横向空间：有其他组件时独占第二行（↑↓ 同行），
-    /// 仅网速时 ↑↓ 各占一行（两行 9pt 在状态栏 ~22pt 高度内正好放下）。
+    /// 刷新状态栏文字。全部单行常规字号；唯一例外：仅勾选网速组件时，
+    /// ↑↓ 拆成上下两行 9pt 小字（状态栏 ~22pt 高度内正好放下）。
     private func updateStatusItemTitle() {
         guard let button = statusItem?.button else { return }
         let snap = store.currentSnapshot()
@@ -146,10 +145,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let up = "↑\(NetMonitor.format(netMonitor.upBytesPerSec))"
             let down = "↓\(NetMonitor.format(netMonitor.downBytesPerSec))"
             if parts.isEmpty {
+                // 仅网速：↑↓ 上下两行小字。
                 lines = [(up, smallFont), (down, smallFont)]
             } else {
-                lines = [(parts.joined(separator: " · "), normalFont),
-                         ("\(up) \(down)", smallFont)]
+                // 与其他组件混排：保持单行，网速内联回常规写法。
+                parts.append("\(up) \(down)")
+                lines = [(parts.joined(separator: " · "), normalFont)]
             }
         } else if !parts.isEmpty {
             lines = [(parts.joined(separator: " · "), normalFont)]
