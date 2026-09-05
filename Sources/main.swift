@@ -101,12 +101,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 刷新状态栏文字：按勾选组件拼接（功率/费用/电量/网速），全不勾 = 仅图标。
+    /// 刷新状态栏文字。常规组件（功率/费用/电量/电池）一行常规字号；
+    /// 网速改小字省横向空间：有其他组件时独占第二行（↑↓ 同行），
+    /// 仅网速时 ↑↓ 各占一行（两行 9pt 在状态栏 ~22pt 高度内正好放下）。
     private func updateStatusItemTitle() {
         guard let button = statusItem?.button else { return }
         let snap = store.currentSnapshot()
         let comps = prefs.statusComponents
-        guard !comps.isEmpty else { button.title = ""; return }
+        guard !comps.isEmpty else {
+            button.attributedTitle = NSAttributedString(string: "")
+            return
+        }
 
         let w = (lastSample?.totalMW ?? snap.currentMW) / 1000
         // 电量/费用均展示累计（语义一致；今日电费空闲量级下恒为 0.00 无信息量）。
@@ -123,9 +128,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if comps.contains(.kwh) {
             parts.append("\(L10n.decimal(kwh, fractionDigits: 3))\(tr("kWh.unit"))")
         }
-        if comps.contains(.net) {
-            parts.append("↑\(NetMonitor.format(netMonitor.upBytesPerSec)) ↓\(NetMonitor.format(netMonitor.downBytesPerSec))")
-        }
         // 电池：外接电源 🔌 / 使用电池 🔋。无电池设备（mini）上勾选了也不显示。
         if comps.contains(.battery), BatteryMonitor.hasBattery() {
             let batt = BatteryMonitor.current()
@@ -133,7 +135,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 parts.append("\(batt.isExternalConnected ? "🔌" : "🔋")\(lvl)%")
             }
         }
-        button.title = " " + parts.joined(separator: " · ")
+
+        let normalFont = NSFont.systemFont(ofSize: 11)   // 菜单栏默认字号
+        let smallFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+        let para = NSMutableParagraphStyle()
+        para.lineHeightMultiple = 0.85   // 压缩行高，让两行文本装进状态栏固定高度
+
+        var lines: [(String, NSFont)] = []
+        if comps.contains(.net) {
+            let up = "↑\(NetMonitor.format(netMonitor.upBytesPerSec))"
+            let down = "↓\(NetMonitor.format(netMonitor.downBytesPerSec))"
+            if parts.isEmpty {
+                lines = [(up, smallFont), (down, smallFont)]
+            } else {
+                lines = [(parts.joined(separator: " · "), normalFont),
+                         ("\(up) \(down)", smallFont)]
+            }
+        } else if !parts.isEmpty {
+            lines = [(parts.joined(separator: " · "), normalFont)]
+        }
+
+        let attr = NSMutableAttributedString()
+        for (i, line) in lines.enumerated() {
+            // 首行前置空格与图标留间距，其余行以 \n 换行。
+            let prefix = i == 0 ? " " : "\n"
+            attr.append(NSAttributedString(string: prefix + line.0,
+                                           attributes: [.font: line.1, .paragraphStyle: para]))
+        }
+        button.attributedTitle = attr
 
         // 功率超阈值时图标染红，比通知更即时的视觉反馈（恢复后还原模板色）。
         button.contentTintColor = w >= prefs.alertPowerThresholdW ? .systemRed : nil
@@ -152,11 +181,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = panelController
-        // 笔记本上多一块电池卡片，面板相应加高；mini/台式机保持原高度。
-        popover.contentSize = NSSize(width: 340,
-                                     height: BatteryMonitor.hasBattery()
-                                         ? 580 + PanelController.batterySectionHeight
-                                         : 580)
+        // 面板尺寸由 PanelController 按内容自适应（preferredContentSize），
+        // 笔记本多一块电池卡片时自动加高，无需在此按设备硬编码高度。
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {

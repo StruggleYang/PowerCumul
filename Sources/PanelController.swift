@@ -40,9 +40,6 @@ final class PanelController: NSViewController {
     private let batteryStateLabel = NSTextField(labelWithString: "")
     private let batteryHealthLabel = NSTextField(labelWithString: "")
 
-    /// 电池卡片在面板中的高度（标题行 + 状态行 + 健康行 + 间距）。
-    static let batterySectionHeight: CGFloat = 50
-
     // 底部
     private let totalLabel = NSTextField(labelWithString: "")
     private let uptimeLabel = NSTextField(labelWithString: "")
@@ -68,11 +65,14 @@ final class PanelController: NSViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func loadView() {
-        // 有电池的设备（笔记本）面板高出电池卡片区；mini/台式机保持原布局。
-        let hasBattery = BatteryMonitor.hasBattery()
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340,
-                                             height: hasBattery ? 690 + PanelController.batterySectionHeight : 690))
-        buildUI(in: container)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 400))
+        let stack = buildUI(in: container)
+        // 面板高度按内容自适应：量出 stack 实际高度（宽 308 = 340 − 左右边距 16×2），
+        // 容器高 = 内容高 + 上下边距 14×2。不再手填固定高度——固定值与内容不符时
+        // NSStackView 会被钉死的上下边距逼着拉伸/压缩间距（表现为 CPU/GPU/ANE 行被挤到顶部等错位）。
+        let contentHeight = stack.fittingSize.height
+        container.frame.size.height = contentHeight + 28
+        preferredContentSize = NSSize(width: 340, height: contentHeight + 28)
         self.view = container
     }
 
@@ -283,7 +283,7 @@ final class PanelController: NSViewController {
 
     // MARK: - UI 构建
 
-    private func buildUI(in container: NSView) {
+    private func buildUI(in container: NSView) -> NSStackView {
         let title = NSTextField(labelWithString: tr("app.title"))
         title.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
 
@@ -329,16 +329,19 @@ final class PanelController: NSViewController {
         summaryBox.spacing = 10   // 实时功率与今日电量之间的间距，紧凑
         summaryBox.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
 
-        // 电池区块：与图表/TOP 区块同款标题风格；无电池设备上三行全部隐藏。
+        // 电池区块：与功率/今日累计同样居中；无电池设备上三行全部隐藏。
         batteryHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
         batteryHeader.textColor = .secondaryLabelColor
         batteryHeader.stringValue = tr("battery.title")
         batteryStateLabel.font = NSFont.systemFont(ofSize: 11)
         batteryHealthLabel.font = NSFont.systemFont(ofSize: 10)
         batteryHealthLabel.textColor = .secondaryLabelColor
+        for label in [batteryHeader, batteryStateLabel, batteryHealthLabel] {
+            label.alignment = .center
+        }
         let batteryBox = NSStackView(views: [batteryHeader, batteryStateLabel, batteryHealthLabel])
         batteryBox.orientation = .vertical
-        batteryBox.alignment = .leading
+        batteryBox.alignment = .centerX
         batteryBox.spacing = 3
         // 构建时立即定好初始可见性：无电池设备（mini）上首帧就是隐藏态，
         // 不等第一次采样刷新（冷打开面板时采样可能几秒后才到）。
@@ -424,8 +427,10 @@ final class PanelController: NSViewController {
             stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14),
             stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            stack.widthAnchor.constraint(equalToConstant: 308),   // 定宽让 fittingSize 高度可解
             chartBox.heightAnchor.constraint(equalToConstant: 100),
         ])
+        return stack
     }
 
     // MARK: - 权限卡片
