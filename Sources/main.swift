@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var alertManager = AlertManager(prefs: prefs, store: store)
     private lazy var processAlertManager = ProcessAlertManager(prefs: prefs)
     private lazy var statusExporter = StatusExporter(prefs: prefs, store: store, processStore: processStore)
+    private lazy var chargeController = ChargeController(prefs: prefs)
     private var streamer: PowerStreamer?
     private let netMonitor = NetMonitor()
     private var netTimer: Timer?
@@ -54,6 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startNetMonitor()
         statusExporter.start()   // 每分钟写出 status.json 供外部脚本/监控读取
         observePrefs()
+        // 探测充电控制能力并补写已存限充（固件模式幂等；legacy 起维护循环）。
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.chargeController.refreshAndApply()
+        }
     }
 
     /// 网速轮询：2s 一次（计数器差值需要自己的节拍，与功率流独立）。
@@ -179,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController = PanelController(prefs: prefs)
         panelController.attachStore(store)
         panelController.attachProcessStore(processStore)
+        panelController.attachChargeController(chargeController)
         popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = panelController
@@ -309,6 +315,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         iconOnly.target = self
         iconOnly.state = prefs.statusComponents.isEmpty ? .on : .off
         menu.addItem(withTitle: NSLocalizedString("menu.statusbar", value: "状态栏显示", comment: ""), action: nil, keyEquivalent: "").submenu = modeMenu
+
+        // 充电上限子菜单（仅笔记本且 SMC 支持充电控制时显示）
+        if BatteryMonitor.hasBattery() {
+            let chargeStatus = PrivilegeManager.chargeStatus()
+            if chargeStatus == .missing {
+                let auth = menu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.auth", value: "充电控制需授权…", comment: ""), action: #selector(grantFromMenu), keyEquivalent: "")
+                auth.target = self
+            } else if chargeController.isCapable {
+                let limitMenu = NSMenu()
+                let off = limitMenu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.off", value: "关闭（充满）", comment: ""), action: #selector(setChargeLimit(_:)), keyEquivalent: "")
+                off.target = self
+                off.representedObject = 100
+                off.state = !chargeController.isActive ? .on : .off
+                limitMenu.addItem(NSMenuItem.separator())
+                for pct in [80, 85, 90, 95] {
+                    let item = limitMenu.addItem(withTitle: "\(pct)%", action: #selector(setChargeLimit(_:)), keyEquivalent: "")
+                    item.target = self
+                    item.representedObject = pct
+                    item.state = chargeController.limitPercent == pct ? .on : .off
+                }
+                let custom = limitMenu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.custom", value: "自定义…", comment: ""), action: #selector(editChargeLimit), keyEquivalent: "")
+                custom.target = self
+                menu.addItem(withTitle: NSLocalizedString("menu.chargeLimit", value: "充电上限", comment: ""), action: nil, keyEquivalent: "").submenu = limitMenu
+            }
+        }
 
         // 语言子菜单
         let langMenu = NSMenu()
@@ -559,11 +590,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = CSVExporter.export(snapshot: store.currentSnapshot(), prefs: prefs)
     }
     @objc private func grantFromMenu() {
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             _ = PrivilegeManager.requestPrivilege()
+            // 授权同时覆盖充电控制：探测能力并补写已存限充。
+            self?.chargeController.refreshAndApply()
             DispatchQueue.main.async { [weak self] in
                 self?.startStreamer()
                 self?.refreshAll()
+            }
+        }
+    }
+
+    // MARK: - 充电控制
+
+    @objc private func setChargeLimit(_ item: NSMenuItem) {
+        guard let pct = item.representedObject as? Int else { return }
+        applyChargeLimit(pct)
+    }
+
+    @objc private func editChargeLimit() {
+        let current = chargeController.isActive ? chargeController.limitPercent : 80
+        if let v = promptNumber(title: NSLocalizedString("menu.chargeLimit", value: "充电上限", comment: ""),
+                                hint: NSLocalizedString("charge.customHint", value: "上限百分比（20–99），回落 2% 后再充", comment: ""),
+                                current: Double(current)) {
+            applyChargeLimit(Int(v))
+        }
+    }
+
+    /// 应用充电上限（后台跑 helper；100 = 关闭恢复充满）。失败弹错误，成功刷新 UI。
+    private func applyChargeLimit(_ pct: Int) {
+        let clamped = min(99, max(20, pct))
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let error: String?
+            if clamped >= 100 {
+                self.chargeController.clearLimit()
+                error = nil
+            } else {
+                error = self.chargeController.setLimit(clamped)
+            }
+            DispatchQueue.main.async {
+                if let error {
+                    self.dataDoneAlert(text: String(format: NSLocalizedString("charge.failed", value: "设置失败：%@", comment: ""), error))
+                }
+                self.refreshAll()
+                self.updateStatusItemTitle()
             }
         }
     }
@@ -638,6 +709,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // legacy 充电控制在退出前放开充电：app 不在时没人维持滞回，
+        // 若停在停充状态退出，插着电电池也充不进。
+        chargeController.prepareForTermination()
         // 退出前终止常驻 powermetrics，避免遗留孤儿进程。
         streamer?.stop()
         statusExporter.stop()

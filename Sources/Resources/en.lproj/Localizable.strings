@@ -178,3 +178,15 @@ Right-click: Settings";
 "battery.timeToEmpty" = "%@ left";
 "battery.duration.h" = "%dh %02dm";
 "battery.duration.m" = "%dm";
+
+// Charge control (laptops only; firmware/legacy modes)
+"menu.chargeLimit" = "Charge Limit";
+"menu.chargeLimit.off" = "Off (Charge Fully)";
+"menu.chargeLimit.custom" = "Custom…";
+"menu.chargeLimit.auth" = "Authorize Charge Control…";
+"battery.limitBadge" = "Limit %d%%";
+"battery.state.atLimit" = "At Charge Limit";
+"charge.customHint" = "Limit percent (20–99), resumes 2% below";
+"charge.notGranted" = "Charge control not authorized — use the context menu to grant";
+"charge.unsupported" = "This Mac does not support charge control";
+"charge.failed" = "Failed: %@";

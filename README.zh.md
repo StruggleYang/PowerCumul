@@ -23,6 +23,7 @@
 - **状态栏实时显示**：组件自由组合 —— 功率 / 累计费用 / 累计电量 / 网速 / 电池（笔记本）按需勾选（默认功率+费用），全不勾即仅图标
 - **弹出面板**（左键）：实时功率 + CPU/GPU/ANE 分量、今日累计 kWh、估算电费
 - **电池信息**（仅笔记本）：面板电池卡片 —— 电量、充电状态与充满/剩余时间估算、健康度、循环次数、温度、充/放电功率；Mac mini 等无电池设备自动隐藏（状态栏电池组件也只在笔记本上出现）
+- **充电上限**（仅笔记本，AlDente 免费版同款）：右键菜单设定 80/85/90/95% 或自定义（20–99），固件级限充由 SMC 固件自行维持滞回，老固件走软件滞回循环；「关闭」即恢复充满。面板电池卡片显示「已到充电上限 / 限充 N%」状态
 - **右键菜单**（右键）：全部设置 —— 采样间隔、货币、电价、校正系数、状态栏模式、语言、告警、开机自启、导出 CSV、检查更新
 - **应用内更新**：右键「检查更新」直接拉取 GitHub 最新 Release，下载换装原地重启，无需浏览器/手动下载（含不限流回退通道）
 - **告警通知**：功率超过阈值 / 今日电费超过预算时弹系统通知（防抖，不刷屏）
@@ -170,7 +171,9 @@ PowerCumul/
 │   ├── EnergyStore.swift     # 累计能量计算 + 双层持久化（samples.jsonl + state.json）
 │   ├── ChartView.swift       # Core Graphics 手绘折线图（24H/7D/30D）
 │   ├── PanelController.swift # NSPopover 主面板布局与刷新
+│   ├── ChargeController.swift# 充电控制：能力探测 / 固件限充补写 / legacy 滞回循环
 │   ├── BatteryMonitor.swift  # 电池信息只读采样（电量/健康度/循环/温度；无电池设备自动降级隐藏）
+│   ├── Helper/main.swift     # powercumul-smc 特权辅助工具（root CLI，独立编译，见 build.sh）
 │   ├── AlertManager.swift    # 功率/预算告警（系统通知 + 防抖）
 │   ├── CSVExporter.swift     # 数据导出 CSV（天级+小时级）
 │   ├── PrivilegeManager.swift# 应用内一键授权（原生密码框写 sudoers）
@@ -205,4 +208,15 @@ A: 解析器采用容错策略：优先匹配新版 `Combined Power (CPU + GPU +
 A: 这是纯软件方案的固有限制（见上文"精度说明"）。若需精确数据请配合智能插座。
 
 **Q: 怎么卸载？**
-A: 删除 App 即可；清理 sudo 规则：`sudo rm /etc/sudoers.d/powercumul`；清理数据：`rm -rf ~/Library/Application\ Support/PowerCumul`。
+A: 删除 App 即可；清理 sudo 规则与充电控制辅助工具：`sudo rm /etc/sudoers.d/powercumul /Library/PrivilegedHelperTools/powercumul-smc`；清理数据：`rm -rf ~/Library/Application\ Support/PowerCumul`。
+
+---
+
+## 🔋 充电上限（笔记本专属）
+
+原理与 AlDente / 开源 batt 相同：直接写 SMC。实现上把 SMC 读写独立成极小的 root 辅助工具 `powercumul-smc`（装到 `/Library/PrivilegedHelperTools/`，与 powermetrics 一起走 sudoers 白名单免密，一次密码授权全覆盖）。
+
+- **固件模式**（较新固件，`bfD0/bfE0/bfF0` 键）：限充与滞回（充到上限停、回落 2% 再充）由固件自己执行，设一次持续生效，app 不在也有效
+- **legacy 模式**（`CH0B+CH0C` / 老固件 `CHTE`）：SMC 只能开关充电，滞回由 app 每 30 秒维护；睡眠前自动停充防过充，**app 退出时自动放开充电**（此模式限充仅在 app 运行期间生效）
+
+安全护栏：上限最低 20%；关闭 = 恢复充满；固件写入后回读校验；检测不到 SMC 充电键的设备（mini/台式机）完全不显示充电菜单。

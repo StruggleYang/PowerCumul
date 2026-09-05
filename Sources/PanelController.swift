@@ -30,6 +30,7 @@ final class PanelController: NSViewController {
     private let topAppsEmptyLabel = NSTextField(labelWithString: "")
     private var topAppRows: [TopAppRowView] = []
     private weak var processStoreRef: ProcessEnergyStore?
+    private weak var chargeRef: ChargeController?
     /// 当前图表各柱对应的桶 key（与 chartView.data 平行），点击定位时按索引取桶。
     private var chartBucketKeys: [String] = []
     /// 点击图表选中的桶 key（nil = 跟随区间聚合）。
@@ -186,8 +187,15 @@ final class PanelController: NSViewController {
                 state += " · " + L10n.tr("battery.timeToFull", "%@后充满", formatMinutes(m))
             }
         } else if info.isExternalConnected {
-            state += " · " + (info.isFullyCharged || info.levelPercent == 100
-                ? tr("battery.state.full") : tr("battery.state.plugged"))
+            // 插电未充电：可能已充满，也可能被限充卡在上限。
+            let limitPct = chargeRef?.isActive == true ? chargeRef?.limitPercent : nil
+            if info.isFullyCharged || info.levelPercent == 100 {
+                state += " · " + tr("battery.state.full")
+            } else if let limitPct, (info.levelPercent ?? 0) >= limitPct - 1 {
+                state += " · " + tr("battery.state.atLimit")
+            } else {
+                state += " · " + tr("battery.state.plugged")
+            }
         } else {
             state += " · \(tr("battery.state.discharging"))"
             if let m = info.timeToEmptyMinutes {
@@ -203,6 +211,9 @@ final class PanelController: NSViewController {
         }
         if let c = info.cycleCount {
             facts.append(L10n.tr("battery.cycles", "循环 %d 次", c))
+        }
+        if let charge = chargeRef, charge.isActive, charge.isCapable {
+            facts.append(String(format: tr("battery.limitBadge"), charge.limitPercent))
         }
         if let t = info.temperatureC {
             facts.append(String(format: tr("battery.temp"), t))
@@ -529,6 +540,11 @@ final class PanelController: NSViewController {
     /// 注入进程能耗 store 引用（耗电应用 TOP 列表数据源）。
     func attachProcessStore(_ store: ProcessEnergyStore) {
         processStoreRef = store
+    }
+
+    /// 注入充电控制器引用（面板展示限充状态）。
+    func attachChargeController(_ controller: ChargeController) {
+        chargeRef = controller
     }
 
     /// 若面板打开，刷新一次（图表时段切换后）。

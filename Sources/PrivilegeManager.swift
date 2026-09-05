@@ -45,18 +45,29 @@ final class PrivilegeManager {
         ProcessInfo.processInfo.userName
     }
 
-    /// 写入 sudoers 免密规则。
-    /// 成功返回 nil；失败返回错误信息。
+    /// 写入 sudoers 免密规则（powermetrics + 充电控制辅助工具，一次授权全覆盖）。
+    /// 同时把辅助工具安装到 /Library/PrivilegedHelperTools/（root 属主、固定路径，
+    /// sudoers 白名单按路径匹配）。成功返回 nil；失败返回错误信息。
     /// - Note: 会弹出系统原生密码授权框（由 AppleScript 驱动），需用户在主线程调用。
     static func requestPrivilege() -> String? {
-        let rule = "\(userName) ALL=(ALL) NOPASSWD: /usr/bin/powermetrics"
-
-        // 脚本：用临时文件写规则 → visudo -c 校验语法 → 通过则安装到 /etc/sudoers.d/。
+        let rules = [
+            "\(userName) ALL=(ALL) NOPASSWD: /usr/bin/powermetrics",
+            "\(userName) ALL=(ALL) NOPASSWD: \(ChargeController.helperPath)",
+        ]
+        let helperSource = Bundle.main.path(forResource: "powercumul-smc", ofType: nil) ?? ""
+        let installHelper = """
+        if [ -f '\(helperSource)' ]; then \\
+            mkdir -p /Library/PrivilegedHelperTools; \\
+            install -m 0755 -o root -g wheel '\(helperSource)' \(ChargeController.helperPath); \\
+        fi
+        """
+        // 脚本：安装辅助工具 → 用临时文件写规则 → visudo 校验语法 → 通过则安装到 /etc/sudoers.d/。
         // 全程在一个 administrator shell 里完成，避免多次弹框。
         let script = """
         do shell script "\\
+            \(installHelper.replacingOccurrences(of: "\n", with: " \\\\\n            ")); \\
             TMP=$(mktemp); \\
-            echo '\(rule)' > $TMP; \\
+            printf '%s\\n%s\\n' '\(rules[0])' '\(rules[1])' > $TMP; \\
             if visudo -cf $TMP >/dev/null 2>&1; then \\
                 install -m 0440 -o root -g wheel $TMP \(sudoersFile) && rm -f $TMP; \\
             else \\
@@ -78,5 +89,26 @@ final class PrivilegeManager {
             return "授权失败：\(msg)"
         }
         return nil
+    }
+
+    // MARK: - 充电控制授权
+
+    /// 充电控制授权状态：辅助工具已安装到固定路径且 sudo 免密可用。
+    static func chargeStatus() -> PrivilegeStatus {
+        guard FileManager.default.fileExists(atPath: ChargeController.helperPath) else {
+            return .missing
+        }
+        let task = Process()
+        task.launchPath = "/usr/bin/sudo"
+        task.arguments = ["-n", ChargeController.helperPath, "status"]
+        task.standardOutput = Pipe()
+        task.standardError = Pipe()
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0 ? .granted : .missing
+        } catch {
+            return .unknown
+        }
     }
 }

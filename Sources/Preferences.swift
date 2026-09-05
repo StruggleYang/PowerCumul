@@ -24,6 +24,7 @@ final class Preferences {
         static let alertProcessOn = "alertProcessEnabled"
         static let chartRange = "chartRange"
         static let correctionFactor = "powerCorrectionFactor"
+        static let chargeLimit = "chargeLimitPercent"
     }
 
     private let defaults = UserDefaults.standard
@@ -197,6 +198,20 @@ final class Preferences {
             defaults.set(clamped, forKey: Key.correctionFactor)
             defaults.synchronize()
             NotificationCenter.default.post(name: .prefsChanged, object: nil)
+        }
+    }
+
+    // MARK: - 充电控制
+
+    /// 充电上限百分比（仅笔记本）。100 = 不限制；下限 20（过深放电伤电池）。
+    var chargeLimitPercent: Int {
+        get {
+            let v = defaults.integer(forKey: Key.chargeLimit)
+            return v == 0 ? 100 : min(100, max(20, v))
+        }
+        set {
+            defaults.set(min(100, max(20, newValue)), forKey: Key.chargeLimit)
+            defaults.synchronize()
         }
     }
 }

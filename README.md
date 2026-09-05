@@ -23,6 +23,7 @@ A lightweight macOS menu bar app to track cumulative power consumption of your M
 - **Status bar real-time display**: composable — toggle Power / cumulative Cost / cumulative Energy / Net speed / Battery (laptops) as needed (default Power+Cost), none checked = icon only
 - **Popover panel** (left-click): real-time power + CPU/GPU/ANE breakdown, today's kWh, estimated cost
 - **Battery info** (laptops only): panel battery card — charge level, charging state with time-to-full/empty estimate, battery health, cycle count, temperature, charge/discharge power; auto-hidden on batteryless Macs (Mac mini / iMac), and the status-bar Battery component only appears on laptops
+- **Charge Limit** (laptops only, AlDente-free equivalent): set 80/85/90/95% or custom (20–99) from the context menu — firmware-enforced limiting with hysteresis on newer SMCs, software hysteresis loop on older ones; "Off" restores full charge. The battery card shows "At Charge Limit / Limit N%" state
 - **Context menu** (right-click): all settings — sample interval, currency, price, correction factor, status bar mode, language, alerts, launch-at-login, export CSV, check for updates
 - **In-app updates**: Check for Updates pulls the latest GitHub Release, downloads, installs in place, and relaunches — no browser, no manual download (with a rate-limit-free fallback channel)
 - **Alert notifications**: power exceeds threshold / daily cost exceeds budget (debounced, no spam)
@@ -156,7 +157,9 @@ PowerCumul/
 │   ├── EnergyStore.swift     # cumulative energy + two-layer persistence (samples.jsonl + state.json)
 │   ├── ChartView.swift       # Core Graphics line chart (24H/7D/30D)
 │   ├── PanelController.swift # NSPopover panel layout & refresh
+│   ├── ChargeController.swift# Charge control: capability detect / firmware limit / legacy hysteresis
 │   ├── BatteryMonitor.swift  # read-only battery sampling (level/health/cycles/temp; auto-degrades without battery)
+│   ├── Helper/main.swift     # powercumul-smc privileged helper (root CLI, built separately — see build.sh)
 │   ├── AlertManager.swift    # power/budget alerts (system notifications + debounce)
 │   ├── CSVExporter.swift     # CSV export (daily + hourly)
 │   ├── PrivilegeManager.swift# in-app authorization (native password prompt → sudoers)
@@ -205,4 +208,15 @@ A: The parser is tolerant: it first matches the newer `Combined Power (CPU + GPU
 A: This is an inherent limitation of pure software solutions (see "Accuracy" above). For precise data, use a smart plug.
 
 **Q: How to uninstall?**
-A: Delete the app; clean up the sudo rule: `sudo rm /etc/sudoers.d/powercumul`; clean up data: `rm -rf ~/Library/Application\ Support/PowerCumul`.
+A: Delete the app; clean up the sudo rule and charge-control helper: `sudo rm /etc/sudoers.d/powercumul /Library/PrivilegedHelperTools/powercumul-smc`; clean up data: `rm -rf ~/Library/Application\ Support/PowerCumul`.
+
+---
+
+## 🔋 Charge Limit (Laptops Only)
+
+Same mechanics as AlDente / open-source batt: writing the SMC directly. SMC access lives in a minimal root helper `powercumul-smc` (installed to `/Library/PrivilegedHelperTools/`, whitelisted in sudoers alongside powermetrics — one password grant covers both).
+
+- **Firmware mode** (newer SMCs, `bfD0/bfE0/bfF0` keys): the firmware itself enforces the limit and hysteresis (charge to limit, stop, resume 2% below) — set once, persists even when the app isn't running
+- **Legacy mode** (`CH0B+CH0C` / older `CHTE`): the SMC can only toggle charging, so the app maintains hysteresis every 30s; charging is force-disabled before sleep to prevent overcharge, and **re-enabled on app quit** (limit only applies while the app runs)
+
+Safety rails: minimum limit 20%; "Off" = charge fully; firmware writes are read-back verified; devices without the SMC charging keys (mini/desktops) never show the charge menu.

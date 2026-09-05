@@ -30,11 +30,12 @@ fi
 echo "==> 编译 Swift 源码"
 mkdir -p "${BUILD_DIR}/obj"
 
-# 收集除 Info.plist 外的所有 .swift 源文件。
+# 收集 Sources 顶层（maxdepth 1）的 .swift —— Helper/ 子目录是特权辅助工具，
+# 单独编译为 root CLI，不进 app target。
 SWIFT_SOURCES=()
 while IFS= read -r f; do
     SWIFT_SOURCES+=("$f")
-done < <(find "${SRC_DIR}" -name '*.swift' | sort)
+done < <(find "${SRC_DIR}" -maxdepth 1 -name '*.swift' | sort)
 
 # 注意: 不加 -parse-as-library —— main.swift 的顶层代码本身就是程序入口。
 swiftc \
@@ -46,6 +47,17 @@ swiftc \
     -o "${BUILD_DIR}/obj/${APP_NAME}" \
     "${SWIFT_SOURCES[@]}"
 
+echo "==> 编译特权辅助工具 (powercumul-smc)"
+# root CLI：充电控制的 SMC 读写，经 sudoers 白名单免密调用。
+# 只做充电相关的几个 SMC 键操作，安装到 /Library/PrivilegedHelperTools/。
+swiftc \
+    -O \
+    -target arm64-apple-macos13 \
+    -framework IOKit \
+    -o "${BUILD_DIR}/obj/powercumul-smc" \
+    "${SRC_DIR}/Helper/main.swift"
+codesign --force --sign - "${BUILD_DIR}/obj/powercumul-smc"
+
 echo "==> 组装 .app bundle"
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
@@ -54,6 +66,10 @@ cp "${SRC_DIR}/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
 # 嵌入应用图标到 Resources（Info.plist 的 CFBundleIconFile 指向 AppIcon）。
 if [[ -f "${SRC_DIR}/AppIcon.icns" ]]; then
     cp "${SRC_DIR}/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
+fi
+# 嵌入特权辅助工具（授权时由 PrivilegeManager 安装到 /Library/PrivilegedHelperTools/）。
+if [[ -f "${BUILD_DIR}/obj/powercumul-smc" ]]; then
+    cp "${BUILD_DIR}/obj/powercumul-smc" "${RESOURCES_DIR}/powercumul-smc"
 fi
 # 嵌入本地化资源：把 Resources/下的 *.lproj 目录整体拷入 bundle 的 Resources/。
 if [[ -d "${SRC_DIR}/Resources" ]]; then
