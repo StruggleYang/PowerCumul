@@ -316,29 +316,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         iconOnly.state = prefs.statusComponents.isEmpty ? .on : .off
         menu.addItem(withTitle: NSLocalizedString("menu.statusbar", value: "状态栏显示", comment: ""), action: nil, keyEquivalent: "").submenu = modeMenu
 
-        // 充电上限子菜单（仅笔记本且 SMC 支持充电控制时显示）
+        // 充电上限子菜单（仅笔记本）：功能常驻，未授权时选中档位现场弹授权。
         if BatteryMonitor.hasBattery() {
-            let chargeStatus = PrivilegeManager.chargeStatus()
-            if chargeStatus == .missing {
-                let auth = menu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.auth", value: "充电控制需授权…", comment: ""), action: #selector(grantFromMenu), keyEquivalent: "")
-                auth.target = self
-            } else if chargeController.isCapable {
-                let limitMenu = NSMenu()
-                let off = limitMenu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.off", value: "关闭（充满）", comment: ""), action: #selector(setChargeLimit(_:)), keyEquivalent: "")
-                off.target = self
-                off.representedObject = 100
-                off.state = !chargeController.isActive ? .on : .off
-                limitMenu.addItem(NSMenuItem.separator())
-                for pct in [80, 85, 90, 95] {
-                    let item = limitMenu.addItem(withTitle: "\(pct)%", action: #selector(setChargeLimit(_:)), keyEquivalent: "")
-                    item.target = self
-                    item.representedObject = pct
-                    item.state = chargeController.limitPercent == pct ? .on : .off
-                }
-                let custom = limitMenu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.custom", value: "自定义…", comment: ""), action: #selector(editChargeLimit), keyEquivalent: "")
-                custom.target = self
-                menu.addItem(withTitle: NSLocalizedString("menu.chargeLimit", value: "充电上限", comment: ""), action: nil, keyEquivalent: "").submenu = limitMenu
+            let limitMenu = NSMenu()
+            let off = limitMenu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.off", value: "关闭（充满）", comment: ""), action: #selector(setChargeLimit(_:)), keyEquivalent: "")
+            off.target = self
+            off.representedObject = 100
+            off.state = !chargeController.isActive ? .on : .off
+            limitMenu.addItem(NSMenuItem.separator())
+            for pct in [80, 85, 90, 95] {
+                let item = limitMenu.addItem(withTitle: "\(pct)%", action: #selector(setChargeLimit(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = pct
+                item.state = chargeController.limitPercent == pct ? .on : .off
             }
+            let custom = limitMenu.addItem(withTitle: NSLocalizedString("menu.chargeLimit.custom", value: "自定义…", comment: ""), action: #selector(editChargeLimit), keyEquivalent: "")
+            custom.target = self
+            menu.addItem(withTitle: NSLocalizedString("menu.chargeLimit", value: "充电上限", comment: ""), action: nil, keyEquivalent: "").submenu = limitMenu
         }
 
         // 语言子菜单
@@ -589,11 +583,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func exportCSVFromMenu() {
         _ = CSVExporter.export(snapshot: store.currentSnapshot(), prefs: prefs)
     }
+
+    /// 右键菜单「一键授权」：覆盖功率采样 + 充电控制，成功后接续采样与能力探测。
     @objc private func grantFromMenu() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            _ = PrivilegeManager.requestPrivilege()
+            guard let self else { return }
+            if let error = PrivilegeManager.requestPrivilege() {
+                DispatchQueue.main.async { self.dataDoneAlert(text: error) }
+                return
+            }
             // 授权同时覆盖充电控制：探测能力并补写已存限充。
-            self?.chargeController.refreshAndApply()
+            self.chargeController.refreshAndApply()
             DispatchQueue.main.async { [weak self] in
                 self?.startStreamer()
                 self?.refreshAll()
@@ -617,11 +617,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 应用充电上限（后台跑 helper；100 = 关闭恢复充满）。失败弹错误，成功刷新 UI。
+    /// 应用充电上限（后台跑 helper；100 = 关闭恢复充满）。
+    /// 未授权时现场申请：弹系统密码框，成功后探测能力再继续；取消/失败弹提示中止。
     private func applyChargeLimit(_ pct: Int) {
         let clamped = min(99, max(20, pct))
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
+            if PrivilegeManager.chargeStatus() != .granted {
+                if let authError = PrivilegeManager.requestPrivilege() {
+                    DispatchQueue.main.async { self.dataDoneAlert(text: authError) }
+                    return
+                }
+                // 授权同时覆盖充电控制：探测 SMC 能力并补写已存限充。
+                self.chargeController.refreshAndApply()
+            }
             let error: String?
             if clamped >= 100 {
                 self.chargeController.clearLimit()

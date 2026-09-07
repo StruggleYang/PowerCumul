@@ -67,8 +67,10 @@ private struct SMCParam {
         }
     }
     mutating func setKey(_ key: String) {
+        // 经典协议：键名按大端 uint32 编码 → 内存中是倒序 ASCII
+        // （对照 gosmc keyCode：'A'<<24|'B'<<16|'C'<<8|'D'，LE 内存即 D,C,B,A）。
         let chars = Array(key.utf8.prefix(4))
-        for (i, c) in chars.enumerated() { bytes[i] = c }
+        for (i, c) in chars.enumerated() { bytes[3 - i] = c }
     }
     mutating func setPayload(_ data: [UInt8]) {
         for (i, b) in data.enumerated() { bytes[SMCParam.offPayload + i] = b }
@@ -192,6 +194,19 @@ private func detectMode(_ smc: SMCConnection) -> Mode {
     return .unsupported
 }
 
+/// SMC 访问是否被系统整体拦截（新系统对第三方收紧时的表现：
+/// 连常规键的 KeyInfo 都在 IOKit 调用层被拒，而非返回「键不存在」）。
+private func smcBlocked(_ smc: SMCConnection) -> Bool {
+    do {
+        _ = try smc.keyInfoSize("BSIs")   // 任意常规键探针
+        return false
+    } catch SMCError.callFailed {
+        return true
+    } catch {
+        return false
+    }
+}
+
 private func enableCharging(_ smc: SMCConnection) throws {
     if smc.hasKey(keyCH0B), smc.hasKey(keyCH0C) {
         try smc.write(keyCH0B, [0x00])
@@ -275,6 +290,7 @@ do {
     case "status":
         let mode = detectMode(smc)
         var parts = ["mode=\(mode.rawValue)"]
+        if smcBlocked(smc) { parts.append("smc=blocked") }
         if mode == .legacy, let charging = isChargingEnabled(smc) {
             parts.append("charging=\(charging ? 1 : 0)")
         }

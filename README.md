@@ -216,6 +216,8 @@ A: Delete the app; clean up the sudo rule and charge-control helper: `sudo rm /e
 
 Same mechanics as AlDente / open-source batt: writing the SMC directly. SMC access lives in a minimal root helper `powercumul-smc` (installed to `/Library/PrivilegedHelperTools/`, whitelisted in sudoers alongside powermetrics — one password grant covers both).
 
+The menu entry is always present in the context menu: if not yet authorized, picking a limit the first time pops the native password prompt on the spot — one password grant activates it (no separate authorize entry).
+
 - **Firmware mode** (newer SMCs, `bfD0/bfE0/bfF0` keys): the firmware itself enforces the limit and hysteresis (charge to limit, stop, resume 2% below) — set once, persists even when the app isn't running
 - **Legacy mode** (`CH0B+CH0C` / older `CHTE`): the SMC can only toggle charging, so the app maintains hysteresis every 30s; charging is force-disabled before sleep to prevent overcharge, and **re-enabled on app quit** (limit only applies while the app runs)
 

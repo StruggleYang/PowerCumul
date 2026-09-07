@@ -216,6 +216,8 @@ A: 删除 App 即可；清理 sudo 规则与充电控制辅助工具：`sudo rm 
 
 原理与 AlDente / 开源 batt 相同：直接写 SMC。实现上把 SMC 读写独立成极小的 root 辅助工具 `powercumul-smc`（装到 `/Library/PrivilegedHelperTools/`，与 powermetrics 一起走 sudoers 白名单免密，一次密码授权全覆盖）。
 
+菜单入口常驻右键菜单：未授权时首次选用档位会现场弹出系统密码框，输一次密码即完成授权并生效（无需单独的授权入口）。
+
 - **固件模式**（较新固件，`bfD0/bfE0/bfF0` 键）：限充与滞回（充到上限停、回落 2% 再充）由固件自己执行，设一次持续生效，app 不在也有效
 - **legacy 模式**（`CH0B+CH0C` / 老固件 `CHTE`）：SMC 只能开关充电，滞回由 app 每 30 秒维护；睡眠前自动停充防过充，**app 退出时自动放开充电**（此模式限充仅在 app 运行期间生效）
 

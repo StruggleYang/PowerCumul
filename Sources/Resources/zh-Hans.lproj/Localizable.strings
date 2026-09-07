@@ -183,10 +183,10 @@
 "menu.chargeLimit" = "充电上限";
 "menu.chargeLimit.off" = "关闭（充满）";
 "menu.chargeLimit.custom" = "自定义…";
-"menu.chargeLimit.auth" = "充电控制需授权…";
 "battery.limitBadge" = "限充 %d%%";
 "battery.state.atLimit" = "已到充电上限";
 "charge.customHint" = "上限百分比（20–99），回落 2% 后再充";
-"charge.notGranted" = "充电控制未授权，请先在右键菜单授权";
+"charge.notGranted" = "充电控制未授权";
 "charge.unsupported" = "此设备不支持充电控制";
+"charge.osRestricted" = "此 macOS 版本已限制第三方充电控制，暂无法设置";
 "charge.failed" = "设置失败：%@";

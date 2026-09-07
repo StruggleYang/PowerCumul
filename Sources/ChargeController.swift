@@ -35,6 +35,8 @@ final class ChargeController {
 
     private let prefs: Preferences
     private(set) var mode: ChargeControlMode = .unsupported
+    /// SMC 访问被系统整体拦截（新 macOS 对第三方收紧），区别于设备真不支持。
+    private(set) var smcBlocked = false
     private var maintainTimer: Timer?
     private var sleepObserver: (any NSObjectProtocol)?
     private var wakeObserver: (any NSObjectProtocol)?
@@ -68,6 +70,7 @@ final class ChargeController {
         }
         let st = parseStatus(out)
         mode = st.mode
+        smcBlocked = st.blocked
         guard isCapable else { return }
         if isActive {
             applyActiveLimit()
@@ -80,10 +83,12 @@ final class ChargeController {
     func setLimit(_ percent: Int) -> String? {
         let pct = min(99, max(20, percent))
         guard PrivilegeManager.chargeStatus() == .granted else {
-            return L10n.tr("charge.notGranted", "充电控制未授权，请先在右键菜单授权")
+            return L10n.tr("charge.notGranted", "充电控制未授权")
         }
         guard isCapable, BatteryMonitor.hasBattery() else {
-            return L10n.tr("charge.unsupported", "此设备不支持充电控制")
+            return smcBlocked
+                ? L10n.tr("charge.osRestricted", "此 macOS 版本已限制第三方充电控制，暂无法设置")
+                : L10n.tr("charge.unsupported", "此设备不支持充电控制")
         }
         prefs.chargeLimitPercent = pct
         applyActiveLimit()
@@ -147,27 +152,37 @@ final class ChargeController {
 
     private func startMaintain() {
         guard maintainTimer == nil else { return }
-        let t = Timer.scheduledTimer(withTimeInterval: ChargeController.maintainInterval,
-                                     repeats: true) { [weak self] _ in
-            self?.maintain()
+        // 定时器必须挂在主线程 runloop 上：调用方（refreshAndApply）常在后台 GCD
+        // 队列执行，GCD 工作线程不跑 runloop，挂上去的定时器永远不触发。
+        let schedule = { [weak self] in
+            guard let self, self.maintainTimer == nil else { return }
+            let t = Timer.scheduledTimer(withTimeInterval: ChargeController.maintainInterval,
+                                         repeats: true) { [weak self] _ in
+                self?.maintain()
+            }
+            t.tolerance = 5
+            maintainTimer = t
+            // 睡眠中定时器不走，贴着上限睡会过充——睡前置停充（与 batt 一致）；
+            // 唤醒后立即维护一拍，恢复充/停状态。
+            let center = NSWorkspace.shared.notificationCenter
+            sleepObserver = center.addObserver(
+                forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let self, self.mode == .legacy, self.isActive,
+                      PrivilegeManager.chargeStatus() == .granted else { return }
+                _ = self.runHelper(["charging", "off"])
+            }
+            wakeObserver = center.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let self, self.mode == .legacy, self.isActive else { return }
+                self.maintain()
+            }
         }
-        t.tolerance = 5
-        maintainTimer = t
-        // 睡眠中定时器不走，贴着上限睡会过充——睡前置停充（与 batt 一致）；
-        // 唤醒后立即维护一拍，恢复充/停状态。
-        let center = NSWorkspace.shared.notificationCenter
-        sleepObserver = center.addObserver(
-            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            guard let self, self.mode == .legacy, self.isActive,
-                  PrivilegeManager.chargeStatus() == .granted else { return }
-            _ = self.runHelper(["charging", "off"])
-        }
-        wakeObserver = center.addObserver(
-            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            guard let self, self.mode == .legacy, self.isActive else { return }
-            self.maintain()
+        if Thread.isMainThread {
+            schedule()
+        } else {
+            DispatchQueue.main.sync(execute: schedule)
         }
     }
 
@@ -197,10 +212,11 @@ final class ChargeController {
         return (p.terminationStatus == 0, out)
     }
 
-    /// 解析 status 输出：mode=... charging=... [active=... upper=... lower=...]
-    private func parseStatus(_ out: String) -> (mode: ChargeControlMode, charging: Int?) {
+    /// 解析 status 输出：mode=... charging=... [smc=blocked] [active=... upper=... lower=...]
+    private func parseStatus(_ out: String) -> (mode: ChargeControlMode, charging: Int?, blocked: Bool) {
         var mode = ChargeControlMode.unsupported
         var charging: Int?
+        var blocked = false
         for line in out.split(separator: "\n") {
             for pair in line.split(separator: " ") {
                 let kv = pair.split(separator: "=", maxSplits: 1)
@@ -210,12 +226,14 @@ final class ChargeController {
                     mode = kv[1] == "firmware" ? .firmware : (kv[1] == "legacy" ? .legacy : .unsupported)
                 case "charging":
                     charging = Int(kv[1])
+                case "smc":
+                    blocked = kv[1] == "blocked"
                 default:
                     break
                 }
             }
         }
-        return (mode, charging)
+        return (mode, charging, blocked)
     }
 
     /// 解析固件限充状态字段（active/upper/lower）。
