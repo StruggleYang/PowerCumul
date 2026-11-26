@@ -41,6 +41,26 @@ final class PanelController: NSViewController {
     private let batteryStateLabel = NSTextField(labelWithString: "")
     private let batteryHealthLabel = NSTextField(labelWithString: "")
 
+    // USB 开关区块（uhubctl 直连的外设通断电）。
+    // 三态：无 uhubctl → 安装引导（一键 Homebrew 安装）；有但无可控口/历史 → 整块隐藏（零打扰）；
+    // 用过但当前全部离线 → 一行空态提示。扫描 ≥2s 节流且仅在面板可见时发生（无后台轮询）。
+    private let usbHeader = NSTextField(labelWithString: "")
+    private let usbGuideLabel = NSTextField(labelWithString: "")
+    private let usbInstallButton = NSButton(title: "", target: nil, action: nil)
+    private let usbCopyButton = NSButton(title: "", target: nil, action: nil)
+    private let usbEmptyLabel = NSTextField(labelWithString: "")
+    private let usbRowsBox = NSStackView()
+    private let usbGuideBox = NSStackView()
+    private let usbBox = NSStackView()
+    private var usbRows: [String: USBSwitchRowView] = [:]
+    private var usbPinnedRows = Set<String>()
+    private var usbLastScanAt = Date.distantPast
+    private let usbManager = USBPowerManager.shared
+
+    /// 引导卡片状态：idle 可安装 / installing 进行中 / brewMissing 转 brew.sh 引导 / failed 失败重试。
+    private enum USBGuideState { case idle, installing, brewMissing, failed(String) }
+    private var usbGuideState: USBGuideState = .idle
+
     // 底部
     private let totalLabel = NSTextField(labelWithString: "")
     private let uptimeLabel = NSTextField(labelWithString: "")
@@ -80,6 +100,8 @@ final class PanelController: NSViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         // 设置项已迁至独立设置窗口，主面板无需初始化设置控件。
+        // USB 开关不依赖功率采样授权，冷打开面板就先刷一次。
+        refreshUSBPorts()
     }
 
     // MARK: - 刷新
@@ -166,6 +188,7 @@ final class PanelController: NSViewController {
 
         refreshTopApps(snapshot: snapshot)
         refreshBattery()
+        refreshUSBPorts()
     }
 
     // MARK: - 电池
@@ -235,6 +258,242 @@ final class PanelController: NSViewController {
         return h > 0
             ? L10n.tr("battery.duration.h", "%d小时%02d分", h, m)
             : L10n.tr("battery.duration.m", "%d分", m)
+    }
+
+    // MARK: - USB 开关
+
+    /// 刷新 USB 区块。≥2s 节流（单次 uhubctl ~100ms，规格约束别打爆）；
+    /// 扫描在后台队列跑，结果回主线程。无后台轮询：仅由面板刷新循环/打开驱动。
+    private func refreshUSBPorts() {
+        guard isViewLoaded else { return }
+        if !usbManager.isUhubctlAvailable {
+            applyUSB(ports: nil, hasUhubctl: false)
+            return
+        }
+        guard Date().timeIntervalSince(usbLastScanAt) >= 2 else { return }
+        usbLastScanAt = Date()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let ports = self?.usbManager.scan() ?? []
+            DispatchQueue.main.async { [weak self] in
+                self?.applyUSB(ports: ports, hasUhubctl: true)
+            }
+        }
+    }
+
+    /// 应用扫描结果到行控件（主线程）。行按 id 增删复用，顺序对齐扫描结果。
+    private func applyUSB(ports: [USBPort]?, hasUhubctl: Bool) {
+        guard isViewLoaded else { return }
+        if !hasUhubctl {
+            // 引导态：无 uhubctl，一键安装 / brew.sh 兜底 / 失败重试三态切换。
+            usbBox.isHidden = false
+            usbHeader.isHidden = false
+            usbGuideBox.isHidden = false
+            usbRowsBox.isHidden = true
+            usbEmptyLabel.isHidden = true
+            switch usbGuideState {
+            case .idle:
+                usbGuideLabel.stringValue = L10n.tr("usbPower.needUhubctl",
+                    "未检测到 uhubctl，安装后可控制 USB 外设电源")
+                usbInstallButton.title = L10n.tr("usbPower.install", "通过 Homebrew 自动安装")
+                usbInstallButton.isEnabled = true
+                usbCopyButton.title = L10n.tr("usbPower.copyBrew", "复制 brew 安装命令")
+                usbCopyButton.isEnabled = true
+            case .installing:
+                usbGuideLabel.stringValue = L10n.tr("usbPower.installing",
+                    "正在安装 uhubctl…（首次约几十秒）")
+                usbInstallButton.isEnabled = false
+                usbCopyButton.isEnabled = false
+            case .brewMissing:
+                usbGuideLabel.stringValue = L10n.tr("usbPower.brewMissing",
+                    "未检测到 Homebrew，请先安装 Homebrew（brew.sh）")
+                usbInstallButton.title = L10n.tr("usbPower.brewSite", "打开 brew.sh")
+                usbInstallButton.isEnabled = true
+                usbCopyButton.title = L10n.tr("usbPower.copyHomebrew", "复制 Homebrew 安装命令")
+                usbCopyButton.isEnabled = true
+            case .failed(let msg):
+                usbGuideLabel.stringValue = L10n.tr("usbPower.installFail", "安装失败：%@", msg)
+                usbInstallButton.title = L10n.tr("usbPower.install", "通过 Homebrew 自动安装")
+                usbInstallButton.isEnabled = true
+                usbCopyButton.title = L10n.tr("usbPower.copyBrew", "复制 brew 安装命令")
+                usbCopyButton.isEnabled = true
+            }
+            updatePreferredContentSize()
+            return
+        }
+        usbGuideBox.isHidden = true
+        let list = ports ?? []
+        if list.isEmpty && !usbManager.hasHistory() {
+            // 没有可控口也从没用过 → 整块隐藏，零打扰。
+            usbBox.isHidden = true
+            updatePreferredContentSize()
+            return
+        }
+        usbBox.isHidden = false
+        usbHeader.isHidden = false
+        usbRowsBox.isHidden = list.isEmpty
+        // 有历史但全下线（显示器休眠等）→ 一行空态提示。
+        usbEmptyLabel.isHidden = !list.isEmpty
+
+        var ordered: [NSView] = []
+        for port in list {
+            let row = usbRows[port.id] ?? makeUSBRow()
+            row.configure(port: port)
+            usbRows[port.id] = row
+            ordered.append(row)
+        }
+        for id in usbRows.keys where !list.contains(where: { $0.id == id }) {
+            usbRows.removeValue(forKey: id)
+            usbPinnedRows.remove(id)
+        }
+        usbRowsBox.setViews(ordered, in: .leading)
+        for row in ordered {
+            guard let id = (row as? USBSwitchRowView)?.currentPort?.id,
+                  !usbPinnedRows.contains(id) else { continue }
+            usbPinnedRows.insert(id)
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: usbRowsBox.leadingAnchor),
+                row.trailingAnchor.constraint(equalTo: usbRowsBox.trailingAnchor),
+                row.heightAnchor.constraint(equalToConstant: 26),
+            ])
+        }
+        updatePreferredContentSize()
+    }
+
+    /// 面板高度内容自适应（与 loadView 同口径：内容高 + 28）。
+    private func updatePreferredContentSize() {
+        guard let stack = view.subviews.first as? NSStackView else { return }
+        preferredContentSize = NSSize(width: 340, height: stack.fittingSize.height + 28)
+    }
+
+    private func makeUSBRow() -> USBSwitchRowView {
+        let row = USBSwitchRowView()
+        row.onSwitch = { [weak self, weak row] on in
+            guard let row else { return }
+            self?.handleUSBSwitch(row, on: on)
+        }
+        row.onFlash = { [weak row] in
+            if let port = row?.currentPort { USBPowerManager.shared.flash(port) }
+        }
+        row.onRename = { [weak self, weak row] in
+            guard let row else { return }
+            self?.renameUSB(row)
+        }
+        row.onToggleLock = { [weak self, weak row] in
+            guard let self, let row, let port = row.currentPort else { return }
+            self.usbManager.setLocked(port, locked: !port.locked)
+            self.usbLastScanAt = .distantPast
+            self.refreshUSBPorts()
+        }
+        row.onIgnore = { [weak self, weak row] in
+            guard let self, let row, let port = row.currentPort else { return }
+            self.usbManager.setIgnored(port, ignored: true)
+            self.usbLastScanAt = .distantPast
+            self.refreshUSBPorts()
+        }
+        return row
+    }
+
+    /// 开关翻转（方向以控件新态为准，setPower 显式指定，不依赖可能陈旧的缓存）。
+    private func handleUSBSwitch(_ row: USBSwitchRowView, on: Bool) {
+        guard let port = row.currentPort else { return }
+        // 断电防误触：连接存储/键鼠类设备时确认（断电=拔线，可能丢数据/失联）。
+        if !on, port.hasSensitiveDevice {
+            let a = NSAlert()
+            a.messageText = L10n.tr("usbPower.storageWarningTitle", "确认断电")
+            a.informativeText = L10n.tr("usbPower.storageWarning",
+                "「%@」连接着存储/键鼠类设备，断电相当于直接拔线，可能丢失数据。确定断电吗？", port.displayName)
+            a.alertStyle = .warning
+            a.addButton(withTitle: L10n.tr("usbPower.storageConfirm", "仍要断电"))
+            a.addButton(withTitle: L10n.tr("usbPower.cancel", "取消"))
+            guard a.runModal() == .alertFirstButtonReturn else {
+                row.configure(port: port)   // 还原开关位置
+                return
+            }
+        }
+        row.setBusy(true)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                try self.usbManager.setPower(port, on: on)
+            } catch {
+                // hub 掉线/显示器休眠：行内呈现，不弹窗打断。
+                DispatchQueue.main.async { row.showOffline() }
+            }
+            // 成败都重扫一次，把行拉回真实态。
+            let ports = self.usbManager.scan()
+            DispatchQueue.main.async {
+                self.usbLastScanAt = Date()
+                self.applyUSB(ports: ports, hasUhubctl: true)
+            }
+        }
+    }
+
+    private func renameUSB(_ row: USBSwitchRowView) {
+        guard let port = row.currentPort else { return }
+        let a = NSAlert()
+        a.messageText = L10n.tr("usbPower.rename", "重命名")
+        a.informativeText = L10n.tr("usbPower.renameHint", "为这个端口起个名字：")
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        input.stringValue = port.userLabel
+        input.placeholderString = L10n.tr("usbPower.unnamed", "端口 %d", port.portNumber)
+        a.accessoryView = input
+        a.window.initialFirstResponder = input
+        a.addButton(withTitle: L10n.tr("usbPower.ok", "好"))
+        a.addButton(withTitle: L10n.tr("usbPower.cancel", "取消"))
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        usbManager.setLabel(port, label: input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+        usbLastScanAt = .distantPast
+        refreshUSBPorts()
+    }
+
+    /// 一键安装 uhubctl（按钮点击即授权，无二次确认）；brew 缺失态按钮转为打开 brew.sh。
+    @objc private func usbInstallClicked() {
+        if case .brewMissing = usbGuideState {
+            NSWorkspace.shared.open(URL(string: "https://brew.sh")!)
+            return
+        }
+        usbGuideState = .installing
+        applyUSB(ports: nil, hasUhubctl: false)   // 立即切到「安装中」态
+        USBPowerManager.shared.installUhubctl { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .installed:
+                    // 装好即用：刷新引导判定 → 自动切到开关列表。
+                    self.usbGuideState = .idle
+                    self.usbLastScanAt = .distantPast
+                    self.refreshUSBPorts()
+                case .brewMissing:
+                    self.usbGuideState = .brewMissing
+                    self.applyUSB(ports: nil, hasUhubctl: false)
+                case .failed(let msg):
+                    self.usbGuideState = .failed(msg)
+                    self.applyUSB(ports: nil, hasUhubctl: false)
+                }
+            }
+        }
+    }
+
+    /// 引导兜底：复制命令到剪贴板（brew 缺失态复制 Homebrew 自身安装命令）。
+    @objc private func copyBrewCommand() {
+        let cmd: String
+        if case .brewMissing = usbGuideState {
+            cmd = "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        } else {
+            cmd = L10n.tr("usbPower.brewCmd", "brew install uhubctl")
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(cmd, forType: .string)
+        usbCopyButton.title = L10n.tr("usbPower.copied", "已复制 ✓")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self else { return }
+            // 复制期间可能已从菜单装好 uhubctl：可用则回正常刷新，否则恢复引导态标题。
+            if self.usbManager.isUhubctlAvailable {
+                self.refreshUSBPorts()
+            } else {
+                self.applyUSB(ports: nil, hasUhubctl: false)
+            }
+        }
     }
 
     // MARK: - 耗电应用 TOP
@@ -358,6 +617,54 @@ final class PanelController: NSViewController {
         // 不等第一次采样刷新（冷打开面板时采样可能几秒后才到）。
         refreshBattery()
 
+        // USB 开关区块：uhubctl 直连的外设通断电。默认整体隐藏，
+        // 由 refreshUSBPorts 按三态切换（无 uhubctl → 引导 / 无口无历史 → 隐藏 / 有口 → 行列表）。
+        usbHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        usbHeader.textColor = .secondaryLabelColor
+        usbHeader.stringValue = L10n.tr("usbPower.title", "USB 开关")
+        usbHeader.alignment = .center
+
+        usbGuideLabel.font = NSFont.systemFont(ofSize: 10)
+        usbGuideLabel.textColor = .secondaryLabelColor
+        usbGuideLabel.alignment = .center
+        usbGuideLabel.stringValue = L10n.tr("usbPower.needUhubctl",
+            "未检测到 uhubctl，安装后可控制 USB 外设电源")
+
+        usbInstallButton.bezelStyle = .rounded
+        usbInstallButton.controlSize = .small
+        usbInstallButton.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        usbInstallButton.target = self
+        usbInstallButton.action = #selector(usbInstallClicked)
+        usbInstallButton.title = L10n.tr("usbPower.install", "通过 Homebrew 自动安装")
+
+        usbCopyButton.bezelStyle = .rounded
+        usbCopyButton.controlSize = .small
+        usbCopyButton.font = NSFont.systemFont(ofSize: 10)
+        usbCopyButton.target = self
+        usbCopyButton.action = #selector(copyBrewCommand)
+        usbCopyButton.title = L10n.tr("usbPower.copyBrew", "复制 brew 安装命令")
+
+        usbGuideBox.orientation = .vertical
+        usbGuideBox.alignment = .centerX
+        usbGuideBox.spacing = 4
+        usbGuideBox.setViews([usbGuideLabel, usbInstallButton, usbCopyButton], in: .leading)
+
+        usbRowsBox.orientation = .vertical
+        usbRowsBox.alignment = .leading
+        usbRowsBox.spacing = 3
+
+        usbEmptyLabel.font = NSFont.systemFont(ofSize: 10)
+        usbEmptyLabel.textColor = .tertiaryLabelColor
+        usbEmptyLabel.alignment = .center
+        usbEmptyLabel.stringValue = L10n.tr("usbPower.empty",
+            "USB hub 暂不可达（显示器休眠或已断开）")
+
+        usbBox.orientation = .vertical
+        usbBox.alignment = .centerX
+        usbBox.spacing = 3
+        usbBox.setViews([usbHeader, usbGuideBox, usbRowsBox, usbEmptyLabel], in: .leading)
+        usbBox.isHidden = true
+
         // 图表 + 时段切换组合成一个区块。时段切换行与图表之间留出足够间距。
         let chartHeader = NSTextField(labelWithString: tr("chart.title"))
         chartHeader.font = NSFont.systemFont(ofSize: 10, weight: .medium)
@@ -422,7 +729,7 @@ final class PanelController: NSViewController {
         stack.spacing = 9
         stack.edgeInsets = NSEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
 
-        let fullWidthViews: [NSView] = [title, summaryBox, batteryBox, chartBox, topAppsBox, footerBox, privilegeBox]
+        let fullWidthViews: [NSView] = [title, summaryBox, batteryBox, usbBox, chartBox, topAppsBox, footerBox, privilegeBox]
         for v in fullWidthViews {
             stack.addArrangedSubview(v)
             stack.setCustomSpacing(8, after: v)
@@ -660,6 +967,136 @@ final class TopAppRowView: NSView {
         let bar = NSRect(x: 0, y: 0, width: width, height: bounds.height)
         NSColor.controlAccentColor.withAlphaComponent(0.32).setFill()
         NSBezierPath(roundedRect: bar, xRadius: 4, yRadius: 4).fill()
+    }
+}
+
+// MARK: - USB 开关行
+
+/// 单行 USB 端口开关：[名称] [供电/断电/锁定态] [NSSwitch] [🔒]。
+/// 右键行内菜单：闪烁定位 / 重命名 / 锁定 / 忽略。锁定时开关禁用
+/// （保护机制，UI 不代用户解锁——解锁须走显式的「解除锁定」菜单项）。
+final class USBSwitchRowView: NSView {
+
+    private let nameLabel = NSTextField(labelWithString: "")
+    private let stateLabel = NSTextField(labelWithString: "")
+    private let powerSwitch = NSSwitch()
+    private let lockLabel = NSTextField(labelWithString: "🔒")
+    private var port: USBPort?
+
+    var currentPort: USBPort? { port }
+
+    var onSwitch: ((Bool) -> Void)?
+    var onFlash: (() -> Void)?
+    var onRename: (() -> Void)?
+    var onToggleLock: (() -> Void)?
+    var onIgnore: (() -> Void)?
+
+    override init(frame frameRect: NSRect = .zero) {
+        super.init(frame: frameRect)
+        nameLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        stateLabel.font = NSFont.systemFont(ofSize: 10)
+        stateLabel.textColor = .secondaryLabelColor
+
+        powerSwitch.controlSize = .small
+        powerSwitch.target = self
+        powerSwitch.action = #selector(switchFlipped)
+
+        lockLabel.font = NSFont.systemFont(ofSize: 10)
+        lockLabel.isHidden = true
+
+        for v in [nameLabel, stateLabel, powerSwitch, lockLabel] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            nameLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+            nameLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stateLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            stateLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stateLabel.trailingAnchor.constraint(lessThanOrEqualTo: powerSwitch.leadingAnchor, constant: -8),
+            powerSwitch.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -26),
+            powerSwitch.centerYAnchor.constraint(equalTo: centerYAnchor),
+            lockLabel.leadingAnchor.constraint(greaterThanOrEqualTo: powerSwitch.trailingAnchor, constant: 2),
+            lockLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            lockLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// 按端口状态刷新行。程序化设 NSSwitch.state 不触发 action，无回环风险。
+    func configure(port: USBPort) {
+        self.port = port
+        nameLabel.stringValue = port.userLabel.isEmpty
+            ? L10n.tr("usbPower.unnamed", "端口 %d", port.portNumber)
+            : port.userLabel
+        if port.locked {
+            stateLabel.stringValue = L10n.tr("usbPower.state.locked", "🔒已锁定")
+            stateLabel.textColor = .tertiaryLabelColor
+            powerSwitch.isEnabled = false
+        } else {
+            stateLabel.stringValue = port.power
+                ? L10n.tr("usbPower.state.on", "✅供电")
+                : L10n.tr("usbPower.state.off", "⛔断电")
+            stateLabel.textColor = .secondaryLabelColor
+            powerSwitch.isEnabled = true
+        }
+        powerSwitch.state = port.power ? .on : .off
+        lockLabel.isHidden = !port.locked
+        menu = buildMenu()
+    }
+
+    /// 操作中/离线态：开关禁用防连点，状态行内呈现（规格：不弹错误打断）。
+    func setBusy(_ busy: Bool) {
+        powerSwitch.isEnabled = !busy && !(port?.locked ?? false)
+    }
+
+    func showOffline() {
+        guard let port else { return }
+        stateLabel.stringValue = L10n.tr("usbPower.state.offline", "离线")
+        stateLabel.textColor = .tertiaryLabelColor
+        powerSwitch.state = port.power ? .on : .off
+        powerSwitch.isEnabled = false
+    }
+
+    @objc private func switchFlipped() {
+        guard let port else { return }
+        guard !port.locked else {
+            powerSwitch.state = port.power ? .on : .off   // 双保险：锁定态拨不动
+            return
+        }
+        onSwitch?(powerSwitch.state == .on)
+    }
+
+    /// 右键行内菜单（每次 configure 重建，锁定项标题随态切换）。
+    private func buildMenu() -> NSMenu {
+        let m = NSMenu()
+        for (title, sel) in [
+            (L10n.tr("usbPower.flash", "闪烁定位"), #selector(doFlash)),
+            (L10n.tr("usbPower.rename", "重命名"), #selector(doRename)),
+            ((port?.locked ?? false)
+                ? L10n.tr("usbPower.unlock", "解除锁定")
+                : L10n.tr("usbPower.lock", "锁定保护"), #selector(doToggleLock)),
+            (L10n.tr("usbPower.ignore", "忽略此口"), #selector(doIgnore)),
+        ] {
+            let item = m.addItem(withTitle: title, action: sel, keyEquivalent: "")
+            item.target = self
+        }
+        return m
+    }
+
+    @objc private func doFlash() { onFlash?() }
+    @objc private func doRename() { onRename?() }
+    @objc private func doToggleLock() { onToggleLock?() }
+    @objc private func doIgnore() { onIgnore?() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // 与耗电应用行一致的浅色圆角底。
+        NSColor.controlAccentColor.withAlphaComponent(0.10).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
     }
 }
 

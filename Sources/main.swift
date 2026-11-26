@@ -335,6 +335,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(withTitle: NSLocalizedString("menu.chargeLimit", value: "充电上限", comment: ""), action: nil, keyEquivalent: "").submenu = limitMenu
         }
 
+        // USB 电源子菜单：列全部命名端口（勾选态=供电，点击翻转）。
+        // 未装 uhubctl 时只给安装入口（引导发现；装好后这里自动变成端口列表）。
+        // scanCached(2s) 内用缓存避免右键卡顿。
+        let usbMenu = NSMenu()
+        if USBPowerManager.shared.isUhubctlAvailable {
+            let usbPorts = USBPowerManager.shared.scanCached(maxAge: 2)
+            let named = usbPorts.filter { !$0.userLabel.isEmpty }
+            for port in named {
+                let item = usbMenu.addItem(withTitle: port.userLabel,
+                                           action: #selector(usbMenuToggle(_:)), keyEquivalent: "")
+                item.target = self
+                item.state = port.power ? .on : .off
+                item.representedObject = port
+            }
+            if named.isEmpty {
+                let hint = usbMenu.addItem(withTitle: L10n.tr("usbPower.menu.none", "（尚无命名端口）"), action: nil, keyEquivalent: "")
+                hint.isEnabled = false
+            }
+            usbMenu.addItem(NSMenuItem.separator())
+            let scan = usbMenu.addItem(withTitle: L10n.tr("usbPower.menu.scan", "扫描新端口…"), action: #selector(scanUSBPorts), keyEquivalent: "")
+            scan.target = self
+            let usbSettings = usbMenu.addItem(withTitle: L10n.tr("usbPower.menu.settings", "USB 设置…"), action: #selector(usbSettings), keyEquivalent: "")
+            usbSettings.target = self
+        } else {
+            let install = usbMenu.addItem(withTitle: L10n.tr("usbPower.menu.install",
+                "安装 uhubctl（启用 USB 电源开关）…"), action: #selector(installUhubctlFromMenu), keyEquivalent: "")
+            install.target = self
+        }
+        menu.addItem(withTitle: L10n.tr("usbPower.menu.title", "USB 电源"), action: nil, keyEquivalent: "").submenu = usbMenu
+
         // 语言子菜单
         let langMenu = NSMenu()
         for lang in AppLanguage.allCases {
@@ -646,6 +676,222 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.updateStatusItemTitle()
             }
         }
+    }
+
+    // MARK: - USB 电源（uhubctl 直连）
+
+    /// 菜单一键安装 uhubctl（未装时的引导入口）。完成后弹结果提示并刷新面板。
+    @objc private func installUhubctlFromMenu() {
+        USBPowerManager.shared.installUhubctl { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .installed:
+                    self.dataDoneAlert(text: L10n.tr("usbPower.menu.installDone",
+                        "uhubctl 安装完成：左键面板即可管理 USB 外设电源"))
+                case .brewMissing:
+                    self.dataDoneAlert(text: L10n.tr("usbPower.menu.brewMissing",
+                        "未检测到 Homebrew——请先安装 Homebrew（brew.sh）后再试"))
+                case .failed(let msg):
+                    self.dataDoneAlert(text: L10n.tr("usbPower.menu.installFail",
+                        "安装失败：%@（可终端执行 brew install uhubctl 手动安装）", msg))
+                }
+                self.refreshAll()
+            }
+        }
+    }
+
+    /// 菜单里点命名端口：翻转供电（带存储/键鼠确认）。失败静默——离线态在面板行内呈现。
+    @objc private func usbMenuToggle(_ item: NSMenuItem) {
+        guard let port = item.representedObject as? USBPort else { return }
+        usbSetPower(port, on: !port.power)
+    }
+
+    private func usbSetPower(_ port: USBPort, on: Bool) {
+        if !on, port.hasSensitiveDevice {
+            let a = NSAlert()
+            a.messageText = L10n.tr("usbPower.storageWarningTitle", "确认断电")
+            a.informativeText = L10n.tr("usbPower.storageWarning",
+                "「%@」连接着存储/键鼠类设备，断电相当于直接拔线，可能丢失数据。确定断电吗？", port.displayName)
+            a.alertStyle = .warning
+            a.addButton(withTitle: L10n.tr("usbPower.storageConfirm", "仍要断电"))
+            a.addButton(withTitle: L10n.tr("usbPower.cancel", "取消"))
+            guard a.runModal() == .alertFirstButtonReturn else { return }
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            _ = try? USBPowerManager.shared.setPower(port, on: on)
+            DispatchQueue.main.async { self?.refreshAll() }
+        }
+    }
+
+    // 命名向导：逐口 flash → 输入名字，跳过/留空都不命名。全部标记已见，
+    // 避免下次扫描重复弹向导。状态放实例属性（NSAlert 按钮会销毁局部上下文）。
+    private var usbWizardPorts: [USBPort] = []
+    private var usbWizardIndex = 0
+    private var usbWizardCurrent: USBPort?
+
+    /// 重跑扫描，把未命名端口送进命名向导（向导只在主动点击时触发，跳过的口
+    /// 下次仍会再次出现，不存在被动打扰；已命名口不重复进向导，改名走行内右键）。
+    @objc private func scanUSBPorts() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let ports = USBPowerManager.shared.scan()
+            let fresh = ports.filter { $0.userLabel.isEmpty }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                guard !fresh.isEmpty else {
+                    self.dataDoneAlert(text: L10n.tr("usbPower.wizard.noNew", "没有待命名的端口（改名可在面板里右键端口）"))
+                    return
+                }
+                self.usbWizardPorts = fresh
+                self.usbWizardIndex = 0
+                self.runUSBWizardStep()
+            }
+        }
+    }
+
+    private func runUSBWizardStep() {
+        guard usbWizardIndex < usbWizardPorts.count else {
+            usbWizardCurrent = nil
+            dataDoneAlert(text: L10n.tr("usbPower.wizard.done", "USB 端口命名完成"))
+            refreshAll()
+            return
+        }
+        let port = usbWizardPorts[usbWizardIndex]
+        usbWizardCurrent = port
+        USBPowerManager.shared.flash(port)   // 闪烁定位：看哪个设备在闪
+
+        let a = NSAlert()
+        a.messageText = L10n.tr("usbPower.wizard.title", "USB 端口命名（%d/%d）",
+                                usbWizardIndex + 1, usbWizardPorts.count)
+        var info = L10n.tr("usbPower.wizard.flashHint",
+                           "已让该端口设备闪烁，看不清可点「再次闪烁」。在输入框输入名字后点「命名」，不想命名点「跳过」。\nHub：%@", port.hubName)
+        if let dev = port.attachedDevice {
+            info += "\n" + L10n.tr("usbPower.wizard.device", "设备：%@", dev)
+        }
+        a.informativeText = info
+
+        // 显式约束容器：输入框全宽在上、按钮在下。
+        //（不能用 NSStackView 包 accessoryView——定宽 NSTextField 会被挤成零宽度，输入框不可见）
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        input.placeholderString = L10n.tr("usbPower.unnamed", "端口 %d", port.portNumber)
+        let flashBtn = NSButton(title: L10n.tr("usbPower.flashAgain", "再次闪烁"),
+                                target: self, action: #selector(usbWizardReflash))
+        flashBtn.bezelStyle = .rounded
+        flashBtn.controlSize = .small
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 56))
+        input.translatesAutoresizingMaskIntoConstraints = false
+        flashBtn.translatesAutoresizingMaskIntoConstraints = false
+        accessory.addSubview(input)
+        accessory.addSubview(flashBtn)
+        NSLayoutConstraint.activate([
+            input.topAnchor.constraint(equalTo: accessory.topAnchor),
+            input.leadingAnchor.constraint(equalTo: accessory.leadingAnchor),
+            input.widthAnchor.constraint(equalToConstant: 260),
+            input.heightAnchor.constraint(equalToConstant: 24),
+            flashBtn.topAnchor.constraint(equalTo: input.bottomAnchor, constant: 8),
+            flashBtn.leadingAnchor.constraint(equalTo: accessory.leadingAnchor),
+            flashBtn.widthAnchor.constraint(equalToConstant: 96),
+            flashBtn.heightAnchor.constraint(equalToConstant: 24),
+        ])
+        a.accessoryView = accessory
+        a.window.initialFirstResponder = input
+        a.addButton(withTitle: L10n.tr("usbPower.wizard.confirm", "命名"))
+        a.addButton(withTitle: L10n.tr("usbPower.wizard.skip", "跳过"))
+        let named = a.runModal() == .alertFirstButtonReturn
+
+        USBPowerManager.shared.markSeen(port)   // 跳过也算已见，不再重复弹
+        if named {
+            let label = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !label.isEmpty { USBPowerManager.shared.setLabel(port, label: label) }
+        }
+        usbWizardIndex += 1
+        runUSBWizardStep()
+    }
+
+    @objc private func usbWizardReflash() {
+        if let port = usbWizardCurrent { USBPowerManager.shared.flash(port) }
+    }
+
+    /// USB 设置：ganged 实验性开关 + 忽略口恢复。极简弹窗，沿用 app 的设置弹窗惯例。
+    /// accessory 用固定尺寸容器 + 显式约束（NSStackView 在 NSAlert 里会被压缩到不可见，
+    /// 向导输入框已踩过同一坑）。
+    @objc private func usbSettings() {
+        let a = NSAlert()
+        a.messageText = L10n.tr("usbPower.settings.title", "USB 设置")
+        a.informativeText = L10n.tr("usbPower.settings.ignoredTitle", "已忽略的端口（点「恢复」重新显示）：")
+
+        let ignored = USBPowerManager.shared.ignoredPorts()
+        let rowH: CGFloat = 22
+        let gap: CGFloat = 6
+        let width: CGFloat = 320
+        let listCount = ignored.isEmpty ? 1 : min(ignored.count, 8)
+        let height = rowH * CGFloat(1 + listCount) + gap * CGFloat(listCount)   // 首行 ganged + 列表行
+
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        var y: CGFloat = 0
+
+        let ganged = NSButton(checkboxWithTitle: L10n.tr("usbPower.settings.ganged",
+            "显示实验性 ganged hub（整组通断，慎用）"), target: self, action: #selector(usbToggleGanged(_:)))
+        ganged.state = prefs.showGangedUSB ? .on : .off
+        ganged.translatesAutoresizingMaskIntoConstraints = false
+        accessory.addSubview(ganged)
+        NSLayoutConstraint.activate([
+            ganged.topAnchor.constraint(equalTo: accessory.topAnchor, constant: y),
+            ganged.leadingAnchor.constraint(equalTo: accessory.leadingAnchor),
+            ganged.heightAnchor.constraint(equalToConstant: rowH),
+        ])
+        y += rowH + gap
+
+        func placeRow(_ view: NSView) {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            accessory.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: accessory.topAnchor, constant: y),
+                view.leadingAnchor.constraint(equalTo: accessory.leadingAnchor),
+                view.heightAnchor.constraint(equalToConstant: rowH),
+            ])
+            y += rowH + gap
+        }
+
+        if ignored.isEmpty {
+            let none = NSTextField(labelWithString: L10n.tr("usbPower.settings.empty", "（无）"))
+            none.font = NSFont.systemFont(ofSize: 10)
+            none.textColor = .secondaryLabelColor
+            placeRow(none)
+        } else {
+            for p in ignored.prefix(8) {
+                let label = NSTextField(labelWithString: p.label.isEmpty ? p.id : p.label)
+                label.font = NSFont.systemFont(ofSize: 10)
+                label.lineBreakMode = .byTruncatingTail
+                let restore = NSButton(title: L10n.tr("usbPower.settings.restore", "恢复"),
+                                       target: self, action: #selector(usbRestoreIgnored(_:)))
+                restore.bezelStyle = .rounded
+                restore.controlSize = .small
+                restore.identifier = NSUserInterfaceItemIdentifier(p.id)
+                // 必须先入层级再上约束：跨层级的 activate 会抛 NSGenericException
+                //（上一版漏了这句，USB 设置弹窗在构造阶段炸掉 → 菜单点下去没反应）。
+                accessory.addSubview(restore)
+                placeRow(label)
+                NSLayoutConstraint.activate([
+                    restore.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+                    restore.trailingAnchor.constraint(equalTo: accessory.trailingAnchor),
+                    restore.widthAnchor.constraint(equalToConstant: 48),
+                    label.trailingAnchor.constraint(lessThanOrEqualTo: restore.leadingAnchor, constant: -8),
+                ])
+            }
+        }
+        a.accessoryView = accessory
+        a.addButton(withTitle: L10n.tr("usbPower.ok", "好"))
+        a.runModal()
+    }
+
+    @objc private func usbToggleGanged(_ btn: NSButton) {
+        prefs.showGangedUSB = btn.state == .on
+    }
+
+    @objc private func usbRestoreIgnored(_ btn: NSButton) {
+        guard let id = btn.identifier?.rawValue else { return }
+        USBPowerManager.shared.setIgnored(id: id, ignored: false)
     }
 
     /// 电价编辑：极简弹窗（单个输入框）。

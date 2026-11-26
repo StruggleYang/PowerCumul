@@ -25,6 +25,7 @@ final class Preferences {
         static let chartRange = "chartRange"
         static let correctionFactor = "powerCorrectionFactor"
         static let chargeLimit = "chargeLimitPercent"
+        static let showGangedUSB = "showGangedUSB"
     }
 
     private let defaults = UserDefaults.standard
@@ -211,6 +212,17 @@ final class Preferences {
         }
         set {
             defaults.set(min(100, max(20, newValue)), forKey: Key.chargeLimit)
+            defaults.synchronize()
+        }
+    }
+
+    // MARK: - USB 开关
+
+    /// 实验性：显示 ganged（整组通断）USB hub。默认关——断一口会连带断一组设备。
+    var showGangedUSB: Bool {
+        get { defaults.bool(forKey: Key.showGangedUSB) }
+        set {
+            defaults.set(newValue, forKey: Key.showGangedUSB)
             defaults.synchronize()
         }
     }
