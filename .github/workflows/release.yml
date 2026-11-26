@@ -10,7 +10,7 @@ on:
 
 jobs:
   release:
-    runs-on: macos-14   # Apple Silicon runner，原生 arm64 构建
+    runs-on: macos-15   # Apple Silicon runner，原生 arm64 构建（macos-14 镜像已退役）
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
